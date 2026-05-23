@@ -22,4 +22,3 @@ func newRootCmd() *cobra.Command {
 
 	return cmd
 }
-

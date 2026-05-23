@@ -194,6 +194,10 @@ func (c *Config) applyArgs(cmd *cobra.Command, args []string) {
 				c.Run.Args = args[1:]
 			}
 		}
+	case "lab":
+		if len(args) > 0 {
+			c.Lab.Preset = args[0]
+		}
 	case "diff":
 		if len(args) > 0 {
 			c.Diff.A = args[0]
@@ -203,4 +207,3 @@ func (c *Config) applyArgs(cmd *cobra.Command, args []string) {
 		}
 	}
 }
-
