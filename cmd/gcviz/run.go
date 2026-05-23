@@ -41,6 +41,15 @@ func newRunCmd() *cobra.Command {
 					fmt.Fprintln(os.Stderr, line)
 				}
 			}()
+			go func() {
+				for range runner.Events() {
+				}
+			}()
+			go func() {
+				for err := range runner.ParseErrors() {
+					fmt.Fprintln(os.Stderr, err)
+				}
+			}()
 
 			return runner.Wait()
 		},

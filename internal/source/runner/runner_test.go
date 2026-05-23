@@ -1,6 +1,9 @@
 package runner
 
 import (
+	"context"
+	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -69,6 +72,56 @@ func TestMergeEnv(t *testing.T) {
 	}
 }
 
+func TestRunnerEmitsParsedEvents(t *testing.T) {
+	runner := NewRunner(os.Args[0], []string{"-test.run=TestRunnerHelperProcess"}, map[string]string{
+		"GCVIZ_RUNNER_HELPER": "1",
+	})
+
+	if err := runner.Start(context.Background()); err != nil {
+		t.Fatalf("unexpected start error: %v", err)
+	}
+
+	stderrDone := make(chan struct{})
+	go func() {
+		defer close(stderrDone)
+		for range runner.Stderr() {
+		}
+	}()
+
+	parseErrDone := make(chan struct{})
+	go func() {
+		defer close(parseErrDone)
+		for err := range runner.ParseErrors() {
+			t.Errorf("unexpected parse error: %v", err)
+		}
+	}()
+
+	var events []int
+	for event := range runner.Events() {
+		events = append(events, event.GCNum)
+	}
+
+	<-stderrDone
+	<-parseErrDone
+
+	if err := runner.Wait(); err != nil {
+		t.Fatalf("unexpected wait error: %v", err)
+	}
+
+	if !reflect.DeepEqual(events, []int{1}) {
+		t.Fatalf("expected parsed GC event 1, got %v", events)
+	}
+}
+
+func TestRunnerHelperProcess(t *testing.T) {
+	if os.Getenv("GCVIZ_RUNNER_HELPER") != "1" {
+		return
+	}
+
+	fmt.Fprintln(os.Stderr, "gc 1 @0.041s 1%: 0.53+0.55+0 ms clock, 8.6+0/0/0+0 ms cpu, 3->4->1 MB, 4 MB goal, 0 MB stacks, 0 MB globals, 16 P")
+	os.Exit(0)
+}
+
 func envSliceToMap(items []string) map[string]string {
 	result := make(map[string]string, len(items))
 	for _, item := range items {
@@ -93,4 +146,3 @@ func containsAll(haystack []string, needles []string) bool {
 	}
 	return true
 }
-

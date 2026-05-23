@@ -12,6 +12,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/timur-developer/gcviz/internal/domain"
 )
 
 const shutdownTimeout = 3 * time.Second
@@ -34,6 +36,9 @@ type Runner struct {
 	stderrCh chan string
 	doneCh   chan struct{}
 	stopOnce sync.Once
+
+	eventCh    chan domain.GCEvent
+	parseErrCh chan error
 }
 
 func NewRunner(target string, args []string, extraEnv map[string]string) *Runner {
@@ -43,11 +48,13 @@ func NewRunner(target string, args []string, extraEnv map[string]string) *Runner
 	}
 
 	return &Runner{
-		target:   target,
-		args:     append([]string(nil), args...),
-		extraEnv: copied,
-		stderrCh: make(chan string),
-		doneCh:   make(chan struct{}),
+		target:     target,
+		args:       append([]string(nil), args...),
+		extraEnv:   copied,
+		stderrCh:   make(chan string),
+		eventCh:    make(chan domain.GCEvent),
+		parseErrCh: make(chan error),
+		doneCh:     make(chan struct{}),
 	}
 }
 
@@ -81,11 +88,28 @@ func (r *Runner) Start(ctx context.Context) error {
 	r.mu.Unlock()
 
 	go func() {
+		parser := NewParser()
+		defer close(r.stderrCh)
+		defer close(r.eventCh)
+		defer close(r.parseErrCh)
+
 		scanner := bufio.NewScanner(stderrPipe)
 		for scanner.Scan() {
-			r.stderrCh <- scanner.Text()
+			line := scanner.Text()
+			r.stderrCh <- line
+
+			event, err := parser.ParseLine(line)
+			if err != nil {
+				r.parseErrCh <- err
+				continue
+			}
+			if event != nil {
+				r.eventCh <- *event
+			}
 		}
-		close(r.stderrCh)
+		if event := parser.Flush(); event != nil {
+			r.eventCh <- *event
+		}
 	}()
 
 	go r.wait()
@@ -96,6 +120,14 @@ func (r *Runner) Start(ctx context.Context) error {
 
 func (r *Runner) Stderr() <-chan string {
 	return r.stderrCh
+}
+
+func (r *Runner) Events() <-chan domain.GCEvent {
+	return r.eventCh
+}
+
+func (r *Runner) ParseErrors() <-chan error {
+	return r.parseErrCh
 }
 
 func (r *Runner) Wait() error {
