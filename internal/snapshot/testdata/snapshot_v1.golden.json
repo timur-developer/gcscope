@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "current": {
+    "gc_cycles_total": 3,
+    "last_stw_us": 700,
+    "heap_live_mb": 12,
+    "heap_goal_mb": 22
+  },
+  "window": {
+    "stw_p50_us": 300,
+    "stw_p99_us": 700,
+    "stw_max_us": 700
+  },
+  "events": [
+    {
+      "gc_num": 1,
+      "time_since_start_s": 1,
+      "gc_cpu_percent": 0,
+      "stw_sweep_term_ms": 0.1,
+      "mark_ms": 0,
+      "stw_mark_term_ms": 0.2,
+      "heap_start_mb": 0,
+      "heap_end_mb": 0,
+      "heap_live_mb": 10,
+      "heap_goal_mb": 20,
+      "num_p": 0,
+      "forced": false,
+      "sweep_heap_size_mb": 0,
+      "pages_swept": 0,
+      "assist_ratio": 0,
+      "assist_workers": 0,
+      "cpu_percent": 0,
+      "cons_mark": 0
+    },
+    {
+      "gc_num": 2,
+      "time_since_start_s": 2,
+      "gc_cpu_percent": 0,
+      "stw_sweep_term_ms": 0.05,
+      "mark_ms": 0,
+      "stw_mark_term_ms": 0.07,
+      "heap_start_mb": 0,
+      "heap_end_mb": 0,
+      "heap_live_mb": 11,
+      "heap_goal_mb": 21,
+      "num_p": 0,
+      "forced": false,
+      "sweep_heap_size_mb": 0,
+      "pages_swept": 0,
+      "assist_ratio": 0,
+      "assist_workers": 0,
+      "cpu_percent": 0,
+      "cons_mark": 0
+    },
+    {
+      "gc_num": 3,
+      "time_since_start_s": 3,
+      "gc_cpu_percent": 0,
+      "stw_sweep_term_ms": 0.3,
+      "mark_ms": 0,
+      "stw_mark_term_ms": 0.4,
+      "heap_start_mb": 0,
+      "heap_end_mb": 0,
+      "heap_live_mb": 12,
+      "heap_goal_mb": 22,
+      "num_p": 0,
+      "forced": false,
+      "sweep_heap_size_mb": 0,
+      "pages_swept": 0,
+      "assist_ratio": 0,
+      "assist_workers": 0,
+      "cpu_percent": 0,
+      "cons_mark": 0
+    }
+  ]
+}
+

@@ -3,6 +3,7 @@
 /testbin.exe
 /gcviz.exe~
 /debug.log
+/tmp
 
 *.log
 *~

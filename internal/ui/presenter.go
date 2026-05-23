@@ -29,7 +29,7 @@ func renderCurrentValues(agg domain.Aggregates) string {
 	return boxed("Current Values", b.String())
 }
 
-func renderInformation(agg domain.Aggregates, now time.Time, lastUpdate time.Time) string {
+func renderInformation(agg domain.Aggregates, now time.Time, lastUpdate time.Time, snapshotDir string, snap snapshotStatus) string {
 	var b strings.Builder
 
 	if lastUpdate.IsZero() {
@@ -41,11 +41,13 @@ func renderInformation(agg domain.Aggregates, now time.Time, lastUpdate time.Tim
 	if !agg.HasData {
 		fmt.Fprintf(&b, "max STW (µs):     -\n")
 		fmt.Fprintf(&b, "uptime:           -\n")
+		writeSnapshotInfo(&b, snapshotDir, snap)
 		return boxed("Information", b.String())
 	}
 
 	fmt.Fprintf(&b, "max STW (µs):     %d\n", agg.Window.STWMaxUs)
 	fmt.Fprintf(&b, "uptime:           %s\n", formatDuration(agg.TargetUptime))
+	writeSnapshotInfo(&b, snapshotDir, snap)
 	return boxed("Information", b.String())
 }
 
@@ -53,6 +55,7 @@ func renderHelp(width, height int) string {
 	body := strings.Join([]string{
 		"q       quit",
 		"ctrl+c  quit",
+		"s       snapshot",
 		"?       toggle help",
 	}, "\n")
 
@@ -62,6 +65,22 @@ func renderHelp(width, height int) string {
 		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
 	}
 	return box
+}
+
+func writeSnapshotInfo(b *strings.Builder, snapshotDir string, snap snapshotStatus) {
+	if snapshotDir != "" {
+		fmt.Fprintf(b, "snapshot dir:     %s\n", snapshotDir)
+	}
+
+	if snap.FileName != "" {
+		fmt.Fprintf(b, "snapshot:         %s\n", snap.FileName)
+		return
+	}
+	if snap.ErrMsg != "" {
+		fmt.Fprintf(b, "snapshot error:   %s\n", snap.ErrMsg)
+		return
+	}
+	fmt.Fprintf(b, "snapshot:         -\n")
 }
 
 func formatDuration(d time.Duration) string {
