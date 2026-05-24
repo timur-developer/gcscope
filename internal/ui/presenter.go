@@ -75,6 +75,7 @@ func renderHelp(width, height int) string {
 		"right   scrub (paused)",
 		"home    jump to first (paused)",
 		"end     jump to last (paused)",
+		"l       toggle STW labels",
 		"?       toggle help (Shift+/)",
 		"h       toggle help",
 		"f1      toggle help",

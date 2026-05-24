@@ -111,3 +111,30 @@ func TestModel_ScrubBounds(t *testing.T) {
 	}
 }
 
+func TestModel_STWLabelsModeCycles(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	m := NewModel(ctx, cancel, 10, "", nil)
+	if m.stwLabelsMode != stwLabelGCAndSTW {
+		t.Fatalf("initial stwLabelsMode=%v, want %v", m.stwLabelsMode, stwLabelGCAndSTW)
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	m = updated.(Model)
+	if m.stwLabelsMode != stwLabelGCAndHeap {
+		t.Fatalf("stwLabelsMode=%v, want %v", m.stwLabelsMode, stwLabelGCAndHeap)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	m = updated.(Model)
+	if m.stwLabelsMode != stwLabelGCOnly {
+		t.Fatalf("stwLabelsMode=%v, want %v", m.stwLabelsMode, stwLabelGCOnly)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	m = updated.(Model)
+	if m.stwLabelsMode != stwLabelGCAndSTW {
+		t.Fatalf("stwLabelsMode=%v, want %v", m.stwLabelsMode, stwLabelGCAndSTW)
+	}
+}

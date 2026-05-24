@@ -33,7 +33,8 @@ type Model struct {
 	stwP50Hist  []historyPoint
 	stwP99Hist  []historyPoint
 
-	cursor int
+	cursor        int
+	stwLabelsMode stwLabelMode
 
 	pausedWindow   []domain.GCEvent
 	pausedAgg      domain.Aggregates
@@ -62,6 +63,25 @@ type snapshotStatus struct {
 
 type snapshotResultMsg snapshotStatus
 
+type stwLabelMode int
+
+const (
+	stwLabelGCAndSTW stwLabelMode = iota
+	stwLabelGCAndHeap
+	stwLabelGCOnly
+)
+
+func (m stwLabelMode) next() stwLabelMode {
+	switch m {
+	case stwLabelGCAndSTW:
+		return stwLabelGCAndHeap
+	case stwLabelGCAndHeap:
+		return stwLabelGCOnly
+	default:
+		return stwLabelGCAndSTW
+	}
+}
+
 func NewModel(ctx context.Context, cancel context.CancelFunc, windowSize int, snapshotDir string, snapshotWriter SnapshotWriter) Model {
 	return Model{
 		ctx:            ctx,
@@ -70,6 +90,7 @@ func NewModel(ctx context.Context, cancel context.CancelFunc, windowSize int, sn
 		now:            time.Now(),
 		snapshotDir:    snapshotDir,
 		snapshotWriter: snapshotWriter,
+		stwLabelsMode:  stwLabelGCAndSTW,
 	}
 }
 
@@ -89,6 +110,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "s":
 			return m, takeSnapshotCmd(m.store.Recent(), m.agg, m.snapshotWriter)
+		case "l":
+			m.stwLabelsMode = m.stwLabelsMode.next()
+			return m, nil
 		case " ":
 			m.togglePause()
 			return m, nil
@@ -138,9 +162,9 @@ func (m Model) View() string {
 	}
 
 	const (
-		paddingX = 2
-		paddingY = 1
-		gapX     = 2
+		paddingX = 0
+		paddingY = 0
+		gapX     = 1
 		gapY     = 1
 	)
 
@@ -167,9 +191,18 @@ func (m Model) View() string {
 		content.H = 0
 	}
 
+	// Reserve one line for the footer so panel borders don't get truncated.
+	footerH := 1
+	contentPanels := content
+	if contentPanels.H > footerH {
+		contentPanels.H -= footerH
+	} else {
+		contentPanels.H = 0
+	}
+
 	// Fallback for narrow terminals: stack panels vertically.
 	if content.W < 90 {
-		rows := stackPanels(content, gapY, 4, []int{7, 7, 10, 8, 10, 12})
+		rows := stackPanels(contentPanels, gapY, 4, []int{7, 7, 10, 8, 10, 12})
 		if len(rows) == 0 {
 			return lipgloss.NewStyle().Padding(paddingY, paddingX).Render("(terminal too small)")
 		}
@@ -187,9 +220,8 @@ func (m Model) View() string {
 		var visWindow []domain.GCEvent
 		visCursor := 0
 		if len(rows) > 2 {
-			visWindow = m.visibleWindowForBar(window, rows[2].W, rows[2].H)
-			visCursor = m.visibleCursorForBar(window, rows[2].W, rows[2].H)
-			bar := renderSTWBarChart(visWindow, visCursor, 0, rows[2].H, rows[2].W)
+			visWindow, visCursor = m.barViewport(window, rows[2].W, rows[2].H)
+			bar := renderSTWBarChart(visWindow, visCursor, m.stwLabelsMode, 0, rows[2].H, rows[2].W)
 			parts = append(parts, bar)
 		}
 		if len(rows) > 3 {
@@ -214,23 +246,16 @@ func (m Model) View() string {
 
 	// Height-based layout: scale rows to fit available height.
 	// Priorities: row1 (current+info) > row2 (stw+heap) > row3 (stw p50/p99).
-	rows := stackPanels(content, gapY, 6, []int{8, 12, 10})
+	rows := stackPanels(contentPanels, gapY, 6, []int{8, 12, 10})
 	if len(rows) == 0 {
 		return lipgloss.NewStyle().Padding(paddingY, paddingX).Render("(terminal too small)")
 	}
 
-	row1Cols := Cols(rows[0], 0.50, 0.50)
-
-	// Apply gaps.
-	row1Cols[0].W -= gapX / 2
-	row1Cols[1].X += gapX / 2
-	row1Cols[1].W -= gapX / 2
-	if row1Cols[0].W < 0 {
-		row1Cols[0].W = 0
+	row1AvailW := rows[0].W - gapX
+	if row1AvailW < 0 {
+		row1AvailW = 0
 	}
-	if row1Cols[1].W < 0 {
-		row1Cols[1].W = 0
-	}
+	row1Cols := Cols(Rect{W: row1AvailW, H: rows[0].H}, 0.50, 0.50)
 
 	window, agg, heapHist, p50Hist, p99Hist := m.displayData()
 
@@ -242,21 +267,15 @@ func (m Model) View() string {
 	}
 
 	if len(rows) >= 2 {
-		row2Cols := Cols(rows[1], 0.28, 0.22, 0.50)
-		row2Cols[0].W -= gapX / 2
-		row2Cols[1].X += gapX / 2
-		row2Cols[1].W -= gapX / 2
-		row2Cols[2].X += gapX / 2
-		row2Cols[2].W -= gapX / 2
-		for i := range row2Cols {
-			if row2Cols[i].W < 0 {
-				row2Cols[i].W = 0
-			}
+		row2AvailW := rows[1].W - gapX*2
+		if row2AvailW < 0 {
+			row2AvailW = 0
 		}
+		// Give the bar chart and details more room; heap chart is still readable at ~40%.
+		row2Cols := Cols(Rect{W: row2AvailW, H: rows[1].H}, 0.36, 0.24, 0.40)
 
-		visWindow := m.visibleWindowForBar(window, row2Cols[0].W, row2Cols[0].H)
-		visCursor := m.visibleCursorForBar(window, row2Cols[0].W, row2Cols[0].H)
-		bar := renderSTWBarChart(visWindow, visCursor, 0, row2Cols[0].H, row2Cols[0].W)
+		visWindow, visCursor := m.barViewport(window, row2Cols[0].W, row2Cols[0].H)
+		bar := renderSTWBarChart(visWindow, visCursor, m.stwLabelsMode, 0, row2Cols[0].H, row2Cols[0].W)
 		details := renderCycleDetails(visWindow, visCursor, row2Cols[1].W, row2Cols[1].H)
 		heap := renderHeapLiveHistory(heapHist, row2Cols[2].W, row2Cols[2].H)
 
@@ -388,26 +407,17 @@ func (m *Model) displayData() ([]domain.GCEvent, domain.Aggregates, []historyPoi
 	return m.store.Recent(), m.agg, m.heapHistory, m.stwP50Hist, m.stwP99Hist
 }
 
-func (m *Model) visibleWindowForBar(window []domain.GCEvent, w, h int) []domain.GCEvent {
+func (m *Model) barViewport(window []domain.GCEvent, w, h int) ([]domain.GCEvent, int) {
 	inner := InnerRect(boxStyle, Rect{W: w, H: h})
-	maxBars := inner.W
-	if maxBars < 10 {
-		maxBars = 10
-	}
-	return lastN(window, maxBars)
-}
-
-func (m *Model) visibleCursorForBar(window []domain.GCEvent, w, h int) int {
-	inner := InnerRect(boxStyle, Rect{W: w, H: h})
-	maxBars := inner.W
-	if maxBars < 10 {
-		maxBars = 10
+	_, _, maxBars := stwBarsCapacity(inner.W)
+	if maxBars < 1 {
+		maxBars = 1
 	}
 	if len(window) == 0 {
-		return 0
+		return nil, 0
 	}
 
-	// In LIVE, cursor tracks last element; in PAUSED it is in absolute window coords.
+	// In LIVE, cursor tracks last element; in PAUSED it is in absolute window coords (m.cursor).
 	cursorAbs := len(window) - 1
 	if m.paused {
 		cursorAbs = m.cursor
@@ -419,15 +429,27 @@ func (m *Model) visibleCursorForBar(window []domain.GCEvent, w, h int) int {
 		}
 	}
 
-	// visible window is lastN(window, maxBars)
 	if len(window) <= maxBars {
-		return cursorAbs
+		return window, cursorAbs
 	}
-	start := len(window) - maxBars
-	if cursorAbs < start {
-		cursorAbs = start
+
+	// In LIVE we always show the latest bars. In PAUSED we allow paging by selecting a window
+	// around the cursor position.
+	if !m.paused {
+		start := len(window) - maxBars
+		return window[start:], maxBars - 1
 	}
-	return cursorAbs - start
+
+	start := cursorAbs - maxBars/2
+	if start < 0 {
+		start = 0
+	}
+	if start > len(window)-maxBars {
+		start = len(window) - maxBars
+	}
+
+	vis := window[start : start+maxBars]
+	return vis, cursorAbs - start
 }
 
 func (m *Model) withFooter(app string, w int) string {
