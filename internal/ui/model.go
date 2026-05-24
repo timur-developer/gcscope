@@ -28,6 +28,7 @@ type Model struct {
 
 	helpVisible bool
 	paused      bool
+	layout      layoutMode
 
 	heapHistory []historyPoint
 	stwP50Hist  []historyPoint
@@ -71,6 +72,20 @@ const (
 	stwLabelGCOnly
 )
 
+type layoutMode int
+
+const (
+	layoutSpaced layoutMode = iota
+	layoutTight
+)
+
+func (l layoutMode) next() layoutMode {
+	if l == layoutSpaced {
+		return layoutTight
+	}
+	return layoutSpaced
+}
+
 func (m stwLabelMode) next() stwLabelMode {
 	switch m {
 	case stwLabelGCAndSTW:
@@ -91,6 +106,7 @@ func NewModel(ctx context.Context, cancel context.CancelFunc, windowSize int, sn
 		snapshotDir:    snapshotDir,
 		snapshotWriter: snapshotWriter,
 		stwLabelsMode:  stwLabelGCAndSTW,
+		layout:         layoutSpaced,
 	}
 }
 
@@ -112,6 +128,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, takeSnapshotCmd(m.store.Recent(), m.agg, m.snapshotWriter)
 		case "l":
 			m.stwLabelsMode = m.stwLabelsMode.next()
+			return m, nil
+		case "g":
+			m.layout = m.layout.next()
 			return m, nil
 		case " ":
 			m.togglePause()
@@ -161,6 +180,13 @@ func (m Model) View() string {
 		return renderHelp(m.width, m.height)
 	}
 
+	if m.layout == layoutTight {
+		return m.viewTight()
+	}
+	return m.viewSpaced()
+}
+
+func (m Model) viewSpaced() string {
 	const (
 		paddingX = 0
 		paddingY = 0
@@ -209,31 +235,31 @@ func (m Model) View() string {
 
 		window, agg, heapHist, p50Hist, p99Hist := m.displayData()
 
-		current := renderCurrentValues(agg, rows[0].W, rows[0].H)
+		current := renderCurrentValues(agg, frameBoxed, rows[0].W, rows[0].H)
 		parts := []string{current}
 
 		if len(rows) > 1 {
-			info := renderInformation(agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, rows[1].W, rows[1].H)
+			info := renderInformation(agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, frameBoxed, rows[1].W, rows[1].H)
 			parts = append(parts, info)
 		}
 
 		var visWindow []domain.GCEvent
 		visCursor := 0
 		if len(rows) > 2 {
-			visWindow, visCursor = m.barViewport(window, rows[2].W, rows[2].H)
-			bar := renderSTWBarChart(visWindow, visCursor, m.stwLabelsMode, 0, rows[2].H, rows[2].W)
+			visWindow, visCursor = m.barViewport(window, frameBoxed, rows[2].W, rows[2].H)
+			bar := renderSTWBarChart(visWindow, visCursor, frameBoxed, m.stwLabelsMode, 0, rows[2].H, rows[2].W)
 			parts = append(parts, bar)
 		}
 		if len(rows) > 3 {
-			details := renderCycleDetails(visWindow, visCursor, rows[3].W, rows[3].H)
+			details := renderCycleDetails(visWindow, visCursor, frameBoxed, rows[3].W, rows[3].H)
 			parts = append(parts, details)
 		}
 		if len(rows) > 4 {
-			heap := renderHeapLiveHistory(heapHist, rows[4].W, rows[4].H)
+			heap := renderHeapLiveHistory(heapHist, frameBoxed, rows[4].W, rows[4].H)
 			parts = append(parts, heap)
 		}
 		if len(rows) > 5 {
-			stw := renderSTWPercentilesHistory(p50Hist, p99Hist, rows[5].W, rows[5].H)
+			stw := renderSTWPercentilesHistory(p50Hist, p99Hist, frameBoxed, rows[5].W, rows[5].H)
 			parts = append(parts, stw)
 		}
 
@@ -259,8 +285,8 @@ func (m Model) View() string {
 
 	window, agg, heapHist, p50Hist, p99Hist := m.displayData()
 
-	current := renderCurrentValues(agg, row1Cols[0].W, row1Cols[0].H)
-	info := renderInformation(agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, row1Cols[1].W, row1Cols[1].H)
+	current := renderCurrentValues(agg, frameBoxed, row1Cols[0].W, row1Cols[0].H)
+	info := renderInformation(agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, frameBoxed, row1Cols[1].W, row1Cols[1].H)
 
 	parts := []string{
 		lipgloss.JoinHorizontal(lipgloss.Top, current, strings.Repeat(" ", gapX), info),
@@ -274,10 +300,10 @@ func (m Model) View() string {
 		// Give the bar chart and details more room; heap chart is still readable at ~40%.
 		row2Cols := Cols(Rect{W: row2AvailW, H: rows[1].H}, 0.36, 0.24, 0.40)
 
-		visWindow, visCursor := m.barViewport(window, row2Cols[0].W, row2Cols[0].H)
-		bar := renderSTWBarChart(visWindow, visCursor, m.stwLabelsMode, 0, row2Cols[0].H, row2Cols[0].W)
-		details := renderCycleDetails(visWindow, visCursor, row2Cols[1].W, row2Cols[1].H)
-		heap := renderHeapLiveHistory(heapHist, row2Cols[2].W, row2Cols[2].H)
+		visWindow, visCursor := m.barViewport(window, frameBoxed, row2Cols[0].W, row2Cols[0].H)
+		bar := renderSTWBarChart(visWindow, visCursor, frameBoxed, m.stwLabelsMode, 0, row2Cols[0].H, row2Cols[0].W)
+		details := renderCycleDetails(visWindow, visCursor, frameBoxed, row2Cols[1].W, row2Cols[1].H)
+		heap := renderHeapLiveHistory(heapHist, frameBoxed, row2Cols[2].W, row2Cols[2].H)
 
 		parts = append(parts,
 			lipgloss.JoinHorizontal(lipgloss.Top, bar, strings.Repeat(" ", gapX), details, strings.Repeat(" ", gapX), heap),
@@ -285,11 +311,168 @@ func (m Model) View() string {
 	}
 
 	if len(rows) >= 3 {
-		stw := renderSTWPercentilesHistory(p50Hist, p99Hist, rows[2].W, rows[2].H)
+		stw := renderSTWPercentilesHistory(p50Hist, p99Hist, frameBoxed, rows[2].W, rows[2].H)
 		parts = append(parts, stw)
 	}
 
 	app := strings.Join(parts, strings.Repeat("\n", gapY))
+	app = m.withFooter(app, content.W)
+	app = fitViewport(app, content.W, content.H)
+
+	_ = screen
+	return lipgloss.NewStyle().Padding(paddingY, paddingX).Render(app)
+}
+
+func (m Model) viewTight() string {
+	const (
+		paddingX = 0
+		paddingY = 0
+		gridSepX = 1
+		gridSepY = 1
+	)
+
+	w := m.width
+	h := m.height
+	if w <= 0 {
+		w = 120
+	}
+	if h <= 0 {
+		h = 40
+	}
+
+	screen := Rect{W: w, H: h}
+	content := Rect{
+		X: paddingX,
+		Y: paddingY,
+		W: w - paddingX*2,
+		H: h - paddingY*2,
+	}
+	if content.W < 0 {
+		content.W = 0
+	}
+	if content.H < 0 {
+		content.H = 0
+	}
+
+	// Reserve one line for the footer so panel borders don't get truncated.
+	footerH := 1
+	contentPanels := content
+	if contentPanels.H > footerH {
+		contentPanels.H -= footerH
+	} else {
+		contentPanels.H = 0
+	}
+
+	// Fallback for narrow terminals: stack panels vertically.
+	if content.W < 90 {
+		gridW := contentPanels.W
+		gridH := contentPanels.H
+		cellW := gridW - 2
+		if cellW < 1 || gridH < 3 {
+			return lipgloss.NewStyle().Padding(paddingY, paddingX).Render("(terminal too small)")
+		}
+
+		rows := stackPanels(Rect{W: cellW, H: gridH - 2}, gridSepY, 3, []int{5, 5, 8, 6, 8, 10})
+		if len(rows) == 0 {
+			return lipgloss.NewStyle().Padding(paddingY, paddingX).Render("(terminal too small)")
+		}
+
+		window, agg, heapHist, p50Hist, p99Hist := m.displayData()
+
+		current := renderCurrentValues(agg, framePanel, cellW, rows[0].H)
+		gridRows := []gridRow{
+			{cellWidths: []int{cellW}, height: rows[0].H, cells: []string{current}},
+		}
+
+		if len(rows) > 1 {
+			info := renderInformation(agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, framePanel, cellW, rows[1].H)
+			gridRows = append(gridRows, gridRow{cellWidths: []int{cellW}, height: rows[1].H, cells: []string{info}})
+		}
+
+		var visWindow []domain.GCEvent
+		visCursor := 0
+		if len(rows) > 2 {
+			visWindow, visCursor = m.barViewport(window, framePanel, cellW, rows[2].H)
+			bar := renderSTWBarChart(visWindow, visCursor, framePanel, m.stwLabelsMode, 0, rows[2].H, cellW)
+			gridRows = append(gridRows, gridRow{cellWidths: []int{cellW}, height: rows[2].H, cells: []string{bar}})
+		}
+		if len(rows) > 3 {
+			details := renderCycleDetails(visWindow, visCursor, framePanel, cellW, rows[3].H)
+			gridRows = append(gridRows, gridRow{cellWidths: []int{cellW}, height: rows[3].H, cells: []string{details}})
+		}
+		if len(rows) > 4 {
+			heap := renderHeapLiveHistory(heapHist, framePanel, cellW, rows[4].H)
+			gridRows = append(gridRows, gridRow{cellWidths: []int{cellW}, height: rows[4].H, cells: []string{heap}})
+		}
+		if len(rows) > 5 {
+			stw := renderSTWPercentilesHistory(p50Hist, p99Hist, framePanel, cellW, rows[5].H)
+			gridRows = append(gridRows, gridRow{cellWidths: []int{cellW}, height: rows[5].H, cells: []string{stw}})
+		}
+
+		app := renderSharedBorderGrid(gridRows, gridW)
+		app = m.withFooter(app, content.W)
+		app = fitViewport(app, content.W, content.H)
+		_ = screen
+		return lipgloss.NewStyle().Padding(paddingY, paddingX).Render(app)
+	}
+
+	// Height-based layout: scale rows to fit available height.
+	// Priorities: row1 (current+info) > row2 (stw+heap) > row3 (stw p50/p99).
+	gridW := contentPanels.W
+	gridH := contentPanels.H
+	if gridW < 10 || gridH < 6 {
+		return lipgloss.NewStyle().Padding(paddingY, paddingX).Render("(terminal too small)")
+	}
+	rows := stackPanels(Rect{W: gridW, H: gridH - 2}, gridSepY, 4, []int{6, 10, 8})
+	if len(rows) == 0 {
+		return lipgloss.NewStyle().Padding(paddingY, paddingX).Render("(terminal too small)")
+	}
+
+	row1AvailW := rows[0].W - 2 - gridSepX
+	if row1AvailW < 0 {
+		row1AvailW = 0
+	}
+	row1Cols := Cols(Rect{W: row1AvailW, H: rows[0].H}, 0.50, 0.50)
+
+	window, agg, heapHist, p50Hist, p99Hist := m.displayData()
+
+	current := renderCurrentValues(agg, framePanel, row1Cols[0].W, row1Cols[0].H)
+	info := renderInformation(agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, framePanel, row1Cols[1].W, row1Cols[1].H)
+
+	gridRows := []gridRow{
+		{cellWidths: []int{row1Cols[0].W, row1Cols[1].W}, height: rows[0].H, cells: []string{current, info}},
+	}
+
+	if len(rows) >= 2 {
+		row2AvailW := rows[1].W - 2 - gridSepX*2
+		if row2AvailW < 0 {
+			row2AvailW = 0
+		}
+		// Give the bar chart and details more room; heap chart is still readable at ~40%.
+		row2Cols := Cols(Rect{W: row2AvailW, H: rows[1].H}, 0.36, 0.24, 0.40)
+
+		visWindow, visCursor := m.barViewport(window, framePanel, row2Cols[0].W, row2Cols[0].H)
+		bar := renderSTWBarChart(visWindow, visCursor, framePanel, m.stwLabelsMode, 0, row2Cols[0].H, row2Cols[0].W)
+		details := renderCycleDetails(visWindow, visCursor, framePanel, row2Cols[1].W, row2Cols[1].H)
+		heap := renderHeapLiveHistory(heapHist, framePanel, row2Cols[2].W, row2Cols[2].H)
+
+		gridRows = append(gridRows, gridRow{
+			cellWidths: []int{row2Cols[0].W, row2Cols[1].W, row2Cols[2].W},
+			height:     rows[1].H,
+			cells:      []string{bar, details, heap},
+		})
+	}
+
+	if len(rows) >= 3 {
+		cellW := rows[2].W - 2
+		if cellW < 1 {
+			cellW = 1
+		}
+		stw := renderSTWPercentilesHistory(p50Hist, p99Hist, framePanel, cellW, rows[2].H)
+		gridRows = append(gridRows, gridRow{cellWidths: []int{cellW}, height: rows[2].H, cells: []string{stw}})
+	}
+
+	app := renderSharedBorderGrid(gridRows, gridW)
 	app = m.withFooter(app, content.W)
 	app = fitViewport(app, content.W, content.H)
 
@@ -407,8 +590,8 @@ func (m *Model) displayData() ([]domain.GCEvent, domain.Aggregates, []historyPoi
 	return m.store.Recent(), m.agg, m.heapHistory, m.stwP50Hist, m.stwP99Hist
 }
 
-func (m *Model) barViewport(window []domain.GCEvent, w, h int) ([]domain.GCEvent, int) {
-	inner := InnerRect(boxStyle, Rect{W: w, H: h})
+func (m *Model) barViewport(window []domain.GCEvent, frame frameMode, w, h int) ([]domain.GCEvent, int) {
+	inner := InnerRect(frameStyle(frame), Rect{W: w, H: h})
 	_, _, maxBars := stwBarsCapacity(inner.W)
 	if maxBars < 1 {
 		maxBars = 1

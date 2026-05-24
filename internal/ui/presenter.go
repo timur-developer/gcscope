@@ -10,7 +10,7 @@ import (
 	"github.com/timur-developer/gcviz/internal/domain"
 )
 
-func renderCurrentValues(agg domain.Aggregates, w, h int) string {
+func renderCurrentValues(agg domain.Aggregates, frame frameMode, w, h int) string {
 	var b strings.Builder
 
 	if !agg.HasData {
@@ -18,7 +18,7 @@ func renderCurrentValues(agg domain.Aggregates, w, h int) string {
 		fmt.Fprintf(&b, "last STW (us):    -\n")
 		fmt.Fprintf(&b, "heap live (MB):  -\n")
 		fmt.Fprintf(&b, "heap goal (MB):  -\n")
-		return boxedSized("Current Values", b.String(), w, h)
+		return framedSizedBy(frame, "Current Values", b.String(), w, h)
 	}
 
 	fmt.Fprintf(&b, "GC cycles total: %d\n", agg.Current.GCCyclesTotal)
@@ -34,10 +34,10 @@ func renderCurrentValues(agg domain.Aggregates, w, h int) string {
 	empty := lipgloss.NewStyle().Background(lipgloss.Color("#2b2b2b"))
 	fmt.Fprintf(&b, "heap:           %s %d/%d\n", progressBar(20, ratio, fill, empty), agg.Current.HeapLiveMB, agg.Current.HeapGoalMB)
 
-	return boxedSized("Current Values", b.String(), w, h)
+	return framedSizedBy(frame, "Current Values", b.String(), w, h)
 }
 
-func renderInformation(agg domain.Aggregates, now time.Time, lastUpdate time.Time, snapshotDir string, snap snapshotStatus, w, h int) string {
+func renderInformation(agg domain.Aggregates, now time.Time, lastUpdate time.Time, snapshotDir string, snap snapshotStatus, frame frameMode, w, h int) string {
 	var b strings.Builder
 
 	if lastUpdate.IsZero() {
@@ -50,7 +50,7 @@ func renderInformation(agg domain.Aggregates, now time.Time, lastUpdate time.Tim
 		fmt.Fprintf(&b, "max STW (us):      -\n")
 		fmt.Fprintf(&b, "uptime:           -\n")
 		writeSnapshotInfo(&b, snapshotDir, snap)
-		return boxedSized("Information", b.String(), w, h)
+		return framedSizedBy(frame, "Information", b.String(), w, h)
 	}
 
 	fmt.Fprintf(&b, "max STW (us):      %s\n", stwStyle(agg.Window.STWMaxUs).Render(fmt.Sprintf("%d", agg.Window.STWMaxUs)))
@@ -62,7 +62,7 @@ func renderInformation(agg domain.Aggregates, now time.Time, lastUpdate time.Tim
 	fmt.Fprintf(&b, "last STW:        %s %d\n", progressBar(20, ratio, fill, empty), agg.Current.LastSTWUs)
 
 	writeSnapshotInfo(&b, snapshotDir, snap)
-	return boxedSized("Information", b.String(), w, h)
+	return framedSizedBy(frame, "Information", b.String(), w, h)
 }
 
 func renderHelp(width, height int) string {
@@ -76,6 +76,7 @@ func renderHelp(width, height int) string {
 		"home    jump to first (paused)",
 		"end     jump to last (paused)",
 		"l       toggle STW labels",
+		"g       toggle layout",
 		"?       toggle help (Shift+/)",
 		"h       toggle help",
 		"f1      toggle help",

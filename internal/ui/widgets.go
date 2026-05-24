@@ -13,19 +13,39 @@ import (
 )
 
 var (
+	borderColor = lipgloss.Color("#5f5f5f")
+
 	boxStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
-			BorderForeground(lipgloss.Color("#5f5f5f")).
+			BorderForeground(borderColor).
 			Padding(0, 1)
+
+	panelStyle = lipgloss.NewStyle().
+			Padding(0, 1)
+
 	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#2ec4b6"))
 
 	okStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#7cb342"))
 	warnStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#c9a227"))
 	badStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#d64f4f"))
 
-	gcLabelStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#5f5f5f"))
+	gcLabelStyle   = lipgloss.NewStyle().Foreground(borderColor)
 	heapLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#7aa2f7"))
 )
+
+type frameMode int
+
+const (
+	frameBoxed frameMode = iota
+	framePanel
+)
+
+func frameStyle(mode frameMode) lipgloss.Style {
+	if mode == frameBoxed {
+		return boxStyle
+	}
+	return panelStyle
+}
 
 func boxed(title, body string) string {
 	body = strings.TrimRight(body, "\n")
@@ -35,8 +55,25 @@ func boxed(title, body string) string {
 }
 
 func boxedSized(title, body string, w, h int) string {
+	return framedSized(boxStyle, title, body, w, h)
+}
+
+func panelSized(title, body string, w, h int) string {
+	return framedSized(panelStyle, title, body, w, h)
+}
+
+func framedSizedBy(mode frameMode, title, body string, w, h int) string {
+	if mode == frameBoxed {
+		return boxedSized(title, body, w, h)
+	}
+	return panelSized(title, body, w, h)
+}
+
+func framedSized(style lipgloss.Style, title, body string, w, h int) string {
 	if w <= 0 || h <= 0 {
-		return boxed(title, body)
+		body = strings.TrimRight(body, "\n")
+		content := titleStyle.Render(title) + "\n" + body
+		return style.Render(content)
 	}
 
 	// lipgloss.Style.Width/Height() apply *before* borders. I.e. the final rendered
@@ -46,9 +83,9 @@ func boxedSized(title, body string, w, h int) string {
 	// border on render.
 	//
 	// FrameSize includes padding + border (+ margins). "Inside" is content area.
-	fx, fy := boxStyle.GetFrameSize()
-	bx := boxStyle.GetHorizontalBorderSize()
-	by := boxStyle.GetVerticalBorderSize()
+	fx, fy := style.GetFrameSize()
+	bx := style.GetHorizontalBorderSize()
+	by := style.GetVerticalBorderSize()
 	insideW := w - fx
 	if insideW < 1 {
 		insideW = 1
@@ -83,7 +120,7 @@ func boxedSized(title, body string, w, h int) string {
 	if preBorderH < 1 {
 		preBorderH = 1
 	}
-	return boxStyle.Width(preBorderW).Height(preBorderH).Render(content)
+	return style.Width(preBorderW).Height(preBorderH).Render(content)
 }
 
 func padRightANSI(s string, w int) string {
@@ -146,8 +183,8 @@ type barData struct {
 	heapLive int
 }
 
-func renderSTWBarChart(window []domain.GCEvent, cursor int, mode stwLabelMode, maxBars int, h int, w int) string {
-	inner := InnerRect(boxStyle, Rect{W: w, H: h})
+func renderSTWBarChart(window []domain.GCEvent, cursor int, frame frameMode, mode stwLabelMode, maxBars int, h int, w int) string {
+	inner := InnerRect(frameStyle(frame), Rect{W: w, H: h})
 	barW, barGap, capBars := stwBarsCapacity(inner.W)
 	if maxBars > 0 && capBars > maxBars {
 		capBars = maxBars
@@ -155,7 +192,7 @@ func renderSTWBarChart(window []domain.GCEvent, cursor int, mode stwLabelMode, m
 
 	values := lastN(window, capBars)
 	if len(values) == 0 {
-		return boxedSized("STW per cycle", "(no data)", w, h)
+		return framedSizedBy(frame, "STW per cycle", "(no data)", w, h)
 	}
 	if cursor < 0 {
 		cursor = 0
@@ -187,7 +224,7 @@ func renderSTWBarChart(window []domain.GCEvent, cursor int, mode stwLabelMode, m
 
 	bodyLines := inner.H - 1
 	if bodyLines < 3 {
-		return boxedSized("STW per cycle", "(terminal too small)", w, h)
+		return framedSizedBy(frame, "STW per cycle", "(terminal too small)", w, h)
 	}
 
 	labelLinesWanted := 2
@@ -301,7 +338,7 @@ func renderSTWBarChart(window []domain.GCEvent, cursor int, mode stwLabelMode, m
 		lines = append(lines, label2)
 	}
 
-	return boxedSized("STW per cycle", strings.Join(lines, "\n"), w, h)
+	return framedSizedBy(frame, "STW per cycle", strings.Join(lines, "\n"), w, h)
 }
 
 func lastN(window []domain.GCEvent, n int) []domain.GCEvent {
@@ -790,9 +827,9 @@ func progressBar(width int, ratio float64, fill lipgloss.Style, empty lipgloss.S
 	return b.String()
 }
 
-func renderCycleDetails(window []domain.GCEvent, cursor int, w, h int) string {
+func renderCycleDetails(window []domain.GCEvent, cursor int, frame frameMode, w, h int) string {
 	if len(window) == 0 {
-		return boxedSized("Cycle Details", "(no data)", w, h)
+		return framedSizedBy(frame, "Cycle Details", "(no data)", w, h)
 	}
 	if cursor < 0 {
 		cursor = 0
@@ -842,5 +879,5 @@ func renderCycleDetails(window []domain.GCEvent, cursor int, w, h int) string {
 		ev.PagesSwept,
 	)
 
-	return boxedSized("Cycle Details", body, w, h)
+	return framedSizedBy(frame, "Cycle Details", body, w, h)
 }
