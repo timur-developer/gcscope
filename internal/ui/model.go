@@ -27,10 +27,19 @@ type Model struct {
 	height int
 
 	helpVisible bool
+	paused      bool
 
 	heapHistory []historyPoint
 	stwP50Hist  []historyPoint
 	stwP99Hist  []historyPoint
+
+	cursor int
+
+	pausedWindow   []domain.GCEvent
+	pausedAgg      domain.Aggregates
+	pausedHeapHist []historyPoint
+	pausedSTWP50   []historyPoint
+	pausedSTWP99   []historyPoint
 
 	snapshotWriter SnapshotWriter
 	snapshotDir    string
@@ -75,11 +84,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			m.cancel()
 			return m, tea.Quit
-		case "?":
+		case "?", "h", "f1":
 			m.helpVisible = !m.helpVisible
 			return m, nil
 		case "s":
 			return m, takeSnapshotCmd(m.store.Recent(), m.agg, m.snapshotWriter)
+		case " ":
+			m.togglePause()
+			return m, nil
+		case "left":
+			m.moveCursor(-1)
+			return m, nil
+		case "right":
+			m.moveCursor(1)
+			return m, nil
+		case "home":
+			m.setCursor(0)
+			return m, nil
+		case "end":
+			m.setCursor(m.currentWindowLen() - 1)
+			return m, nil
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -91,6 +115,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.store.Add(msg.Event)
 		m.agg = domain.ComputeAggregates(m.store.Recent())
 		m.pushHistory(msg.At)
+		if !m.paused {
+			m.cursor = m.currentWindowLen() - 1
+		}
 		return m, nil
 	case tickMsg:
 		m.now = msg.At
@@ -142,32 +169,44 @@ func (m Model) View() string {
 
 	// Fallback for narrow terminals: stack panels vertically.
 	if content.W < 90 {
-		rows := stackPanels(content, gapY, 4, []int{7, 7, 10, 10, 12})
+		rows := stackPanels(content, gapY, 4, []int{7, 7, 10, 8, 10, 12})
 		if len(rows) == 0 {
 			return lipgloss.NewStyle().Padding(paddingY, paddingX).Render("(terminal too small)")
 		}
 
-		current := renderCurrentValues(m.agg, rows[0].W, rows[0].H)
+		window, agg, heapHist, p50Hist, p99Hist := m.displayData()
+
+		current := renderCurrentValues(agg, rows[0].W, rows[0].H)
 		parts := []string{current}
 
 		if len(rows) > 1 {
-			info := renderInformation(m.agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, rows[1].W, rows[1].H)
+			info := renderInformation(agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, rows[1].W, rows[1].H)
 			parts = append(parts, info)
 		}
+
+		var visWindow []domain.GCEvent
+		visCursor := 0
 		if len(rows) > 2 {
-			bar := renderSTWBarChart(m.store.Recent(), 0, rows[2].H, rows[2].W)
+			visWindow = m.visibleWindowForBar(window, rows[2].W, rows[2].H)
+			visCursor = m.visibleCursorForBar(window, rows[2].W, rows[2].H)
+			bar := renderSTWBarChart(visWindow, visCursor, 0, rows[2].H, rows[2].W)
 			parts = append(parts, bar)
 		}
 		if len(rows) > 3 {
-			heap := renderHeapLiveHistory(m.heapHistory, rows[3].W, rows[3].H)
-			parts = append(parts, heap)
+			details := renderCycleDetails(visWindow, visCursor, rows[3].W, rows[3].H)
+			parts = append(parts, details)
 		}
 		if len(rows) > 4 {
-			stw := renderSTWPercentilesHistory(m.stwP50Hist, m.stwP99Hist, rows[4].W, rows[4].H)
+			heap := renderHeapLiveHistory(heapHist, rows[4].W, rows[4].H)
+			parts = append(parts, heap)
+		}
+		if len(rows) > 5 {
+			stw := renderSTWPercentilesHistory(p50Hist, p99Hist, rows[5].W, rows[5].H)
 			parts = append(parts, stw)
 		}
 
 		app := strings.Join(parts, strings.Repeat("\n", gapY))
+		app = m.withFooter(app, content.W)
 		app = fitViewport(app, content.W, content.H)
 		_ = screen
 		return lipgloss.NewStyle().Padding(paddingY, paddingX).Render(app)
@@ -181,10 +220,6 @@ func (m Model) View() string {
 	}
 
 	row1Cols := Cols(rows[0], 0.50, 0.50)
-	row2Cols := []Rect{}
-	if len(rows) >= 2 {
-		row2Cols = Cols(rows[1], 0.32, 0.68)
-	}
 
 	// Apply gaps.
 	row1Cols[0].W -= gapX / 2
@@ -197,38 +232,46 @@ func (m Model) View() string {
 		row1Cols[1].W = 0
 	}
 
-	current := renderCurrentValues(m.agg, row1Cols[0].W, row1Cols[0].H)
-	info := renderInformation(m.agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, row1Cols[1].W, row1Cols[1].H)
+	window, agg, heapHist, p50Hist, p99Hist := m.displayData()
+
+	current := renderCurrentValues(agg, row1Cols[0].W, row1Cols[0].H)
+	info := renderInformation(agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, row1Cols[1].W, row1Cols[1].H)
 
 	parts := []string{
 		lipgloss.JoinHorizontal(lipgloss.Top, current, strings.Repeat(" ", gapX), info),
 	}
 
 	if len(rows) >= 2 {
+		row2Cols := Cols(rows[1], 0.28, 0.22, 0.50)
 		row2Cols[0].W -= gapX / 2
 		row2Cols[1].X += gapX / 2
 		row2Cols[1].W -= gapX / 2
-		if row2Cols[0].W < 0 {
-			row2Cols[0].W = 0
-		}
-		if row2Cols[1].W < 0 {
-			row2Cols[1].W = 0
+		row2Cols[2].X += gapX / 2
+		row2Cols[2].W -= gapX / 2
+		for i := range row2Cols {
+			if row2Cols[i].W < 0 {
+				row2Cols[i].W = 0
+			}
 		}
 
-		bar := renderSTWBarChart(m.store.Recent(), 0, row2Cols[0].H, row2Cols[0].W)
-		heap := renderHeapLiveHistory(m.heapHistory, row2Cols[1].W, row2Cols[1].H)
+		visWindow := m.visibleWindowForBar(window, row2Cols[0].W, row2Cols[0].H)
+		visCursor := m.visibleCursorForBar(window, row2Cols[0].W, row2Cols[0].H)
+		bar := renderSTWBarChart(visWindow, visCursor, 0, row2Cols[0].H, row2Cols[0].W)
+		details := renderCycleDetails(visWindow, visCursor, row2Cols[1].W, row2Cols[1].H)
+		heap := renderHeapLiveHistory(heapHist, row2Cols[2].W, row2Cols[2].H)
 
 		parts = append(parts,
-			lipgloss.JoinHorizontal(lipgloss.Top, bar, strings.Repeat(" ", gapX), heap),
+			lipgloss.JoinHorizontal(lipgloss.Top, bar, strings.Repeat(" ", gapX), details, strings.Repeat(" ", gapX), heap),
 		)
 	}
 
 	if len(rows) >= 3 {
-		stw := renderSTWPercentilesHistory(m.stwP50Hist, m.stwP99Hist, rows[2].W, rows[2].H)
+		stw := renderSTWPercentilesHistory(p50Hist, p99Hist, rows[2].W, rows[2].H)
 		parts = append(parts, stw)
 	}
 
 	app := strings.Join(parts, strings.Repeat("\n", gapY))
+	app = m.withFooter(app, content.W)
 	app = fitViewport(app, content.W, content.H)
 
 	_ = screen
@@ -283,6 +326,120 @@ func (m *Model) pushHistory(at time.Time) {
 	m.heapHistory = appendLimited(m.heapHistory, historyPoint{At: at, Value: float64(m.agg.Current.HeapLiveMB)}, limit)
 	m.stwP50Hist = appendLimited(m.stwP50Hist, historyPoint{At: at, Value: float64(m.agg.Window.STWP50Us)}, limit)
 	m.stwP99Hist = appendLimited(m.stwP99Hist, historyPoint{At: at, Value: float64(m.agg.Window.STWP99Us)}, limit)
+}
+
+func (m *Model) togglePause() {
+	if m.paused {
+		m.paused = false
+		m.cursor = m.currentWindowLen() - 1
+		m.pausedWindow = nil
+		m.pausedAgg = domain.Aggregates{}
+		m.pausedHeapHist = nil
+		m.pausedSTWP50 = nil
+		m.pausedSTWP99 = nil
+		return
+	}
+
+	m.paused = true
+	m.pausedWindow = m.store.Recent()
+	m.pausedAgg = domain.ComputeAggregates(m.pausedWindow)
+	m.pausedHeapHist = append([]historyPoint(nil), m.heapHistory...)
+	m.pausedSTWP50 = append([]historyPoint(nil), m.stwP50Hist...)
+	m.pausedSTWP99 = append([]historyPoint(nil), m.stwP99Hist...)
+	m.cursor = len(m.pausedWindow) - 1
+}
+
+func (m *Model) currentWindowLen() int {
+	if m.paused {
+		return len(m.pausedWindow)
+	}
+	return m.store.Len()
+}
+
+func (m *Model) moveCursor(delta int) {
+	if !m.paused {
+		return
+	}
+	m.setCursor(m.cursor + delta)
+}
+
+func (m *Model) setCursor(v int) {
+	if !m.paused {
+		return
+	}
+	max := len(m.pausedWindow) - 1
+	if max < 0 {
+		m.cursor = 0
+		return
+	}
+	if v < 0 {
+		v = 0
+	}
+	if v > max {
+		v = max
+	}
+	m.cursor = v
+}
+
+func (m *Model) displayData() ([]domain.GCEvent, domain.Aggregates, []historyPoint, []historyPoint, []historyPoint) {
+	if m.paused {
+		return m.pausedWindow, m.pausedAgg, m.pausedHeapHist, m.pausedSTWP50, m.pausedSTWP99
+	}
+	return m.store.Recent(), m.agg, m.heapHistory, m.stwP50Hist, m.stwP99Hist
+}
+
+func (m *Model) visibleWindowForBar(window []domain.GCEvent, w, h int) []domain.GCEvent {
+	inner := InnerRect(boxStyle, Rect{W: w, H: h})
+	maxBars := inner.W
+	if maxBars < 10 {
+		maxBars = 10
+	}
+	return lastN(window, maxBars)
+}
+
+func (m *Model) visibleCursorForBar(window []domain.GCEvent, w, h int) int {
+	inner := InnerRect(boxStyle, Rect{W: w, H: h})
+	maxBars := inner.W
+	if maxBars < 10 {
+		maxBars = 10
+	}
+	if len(window) == 0 {
+		return 0
+	}
+
+	// In LIVE, cursor tracks last element; in PAUSED it is in absolute window coords.
+	cursorAbs := len(window) - 1
+	if m.paused {
+		cursorAbs = m.cursor
+		if cursorAbs < 0 {
+			cursorAbs = 0
+		}
+		if cursorAbs >= len(window) {
+			cursorAbs = len(window) - 1
+		}
+	}
+
+	// visible window is lastN(window, maxBars)
+	if len(window) <= maxBars {
+		return cursorAbs
+	}
+	start := len(window) - maxBars
+	if cursorAbs < start {
+		cursorAbs = start
+	}
+	return cursorAbs - start
+}
+
+func (m *Model) withFooter(app string, w int) string {
+	state := "LIVE"
+	if m.paused {
+		state = "PAUSED"
+	}
+	footer := lipgloss.NewStyle().Foreground(lipgloss.Color("#5f5f5f")).Render(state + "  q quit | s snapshot | space pause | left/right scrub | ? help")
+	if w > 0 {
+		footer = ansi.Truncate(footer, w, "")
+	}
+	return app + "\n" + footer
 }
 
 func appendLimited(s []historyPoint, v historyPoint, limit int) []historyPoint {

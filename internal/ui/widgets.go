@@ -73,7 +73,7 @@ func padRightANSI(s string, w int) string {
 	return s + strings.Repeat(" ", w-sw)
 }
 
-func renderSTWBarChart(window []domain.GCEvent, maxBars int, h int, w int) string {
+func renderSTWBarChart(window []domain.GCEvent, cursor int, maxBars int, h int, w int) string {
 	inner := InnerRect(boxStyle, Rect{W: w, H: h})
 	if maxBars <= 0 {
 		maxBars = inner.W
@@ -87,6 +87,13 @@ func renderSTWBarChart(window []domain.GCEvent, maxBars int, h int, w int) strin
 		return boxedSized("STW per cycle", "(max: -us)\n\n(no data)", w, h)
 	}
 
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor >= len(values) {
+		cursor = len(values) - 1
+	}
+
 	stwUs := make([]int64, 0, len(values))
 	var max int64
 	for _, ev := range values {
@@ -97,13 +104,32 @@ func renderSTWBarChart(window []domain.GCEvent, maxBars int, h int, w int) strin
 		}
 	}
 
-	chartH := inner.H - 2
-	if chartH < 3 {
-		chartH = 3
+	// boxedSized already spends 1 line on the title, so body must fit into inner.H-1 lines.
+	// Keep axis + cursor marker visible even on tiny terminals by shrinking the chart first
+	// and dropping the "(max ...)" label when needed.
+	bodyLines := inner.H - 1
+	if bodyLines < 3 {
+		return boxedSized("STW per cycle", "(terminal too small)", w, h)
 	}
-	lines := renderBars(stwUs, max, chartH)
+	showMax := bodyLines >= 4
+	reserved := 2 // axis + marker
+	if showMax {
+		reserved++
+	}
+	chartH := bodyLines - reserved
+	if chartH < 1 {
+		chartH = 1
+	}
+
+	lines := renderBars(stwUs, max, chartH, cursor)
 	axis := strings.Repeat("─", len(values))
-	body := fmt.Sprintf("(max: %dµs)\n%s\n%s", max, strings.Join(lines, "\n"), axis)
+	marker := renderCursorMarker(len(values), cursor)
+	var body string
+	if showMax {
+		body = fmt.Sprintf("(max: %dµs)\n%s\n%s\n%s", max, strings.Join(lines, "\n"), axis, marker)
+	} else {
+		body = fmt.Sprintf("%s\n%s\n%s", strings.Join(lines, "\n"), axis, marker)
+	}
 	return boxedSized("STW per cycle", body, w, h)
 }
 
@@ -122,7 +148,7 @@ func stwPerCycleUs(ev domain.GCEvent) int64 {
 	return int64(math.Round(ms * 1000))
 }
 
-func renderBars(values []int64, max int64, height int) []string {
+func renderBars(values []int64, max int64, height int, cursor int) []string {
 	if height <= 0 {
 		height = 1
 	}
@@ -149,10 +175,14 @@ func renderBars(values []int64, max int64, height int) []string {
 			if h >= row {
 				v := values[i]
 				style := stwStyle(v)
-				if i == len(values)-1 {
-					style = style.Bold(true)
+				ch := "█"
+				if i == cursor {
+					// Use a clearly different glyph instead of reverse-video (which may render as "invisible"
+					// depending on terminal theme).
+					style = style.Bold(true).Underline(true)
+					ch = "▓"
 				}
-				b.WriteString(style.Render("█"))
+				b.WriteString(style.Render(ch))
 			} else {
 				b.WriteByte(' ')
 			}
@@ -160,6 +190,28 @@ func renderBars(values []int64, max int64, height int) []string {
 		out = append(out, b.String())
 	}
 	return out
+}
+
+func renderCursorMarker(n int, cursor int) string {
+	if n <= 0 {
+		return ""
+	}
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor >= n {
+		cursor = n - 1
+	}
+
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		if i == cursor {
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#c0c0c0")).Bold(true).Render("^"))
+		} else {
+			b.WriteByte(' ')
+		}
+	}
+	return b.String()
 }
 
 func stwStyle(us int64) lipgloss.Style {
@@ -212,4 +264,59 @@ func progressBar(width int, ratio float64, fill lipgloss.Style, empty lipgloss.S
 		}
 	}
 	return b.String()
+}
+
+func renderCycleDetails(window []domain.GCEvent, cursor int, w, h int) string {
+	if len(window) == 0 {
+		return boxedSized("Cycle Details", "(no data)", w, h)
+	}
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor >= len(window) {
+		cursor = len(window) - 1
+	}
+
+	ev := window[cursor]
+	stwTotalUs := stwPerCycleUs(ev)
+	stwSweepUs := int64(math.Round(ev.STWSweepTermMs * 1000))
+	stwMarkUs := int64(math.Round(ev.STWMarkTermMs * 1000))
+
+	forced := "no"
+	if ev.Forced {
+		forced = "yes"
+	}
+
+	body := fmt.Sprintf(
+		"GC #:            %d\n"+
+			"time since start: %.1fs\n"+
+			"forced:          %s\n"+
+			"\n"+
+			"STW total (us):  %s\n"+
+			"  sweep term:    %d\n"+
+			"  mark term:     %d\n"+
+			"\n"+
+			"heap (MB):\n"+
+			"  start/end:     %d/%d\n"+
+			"  live/goal:     %d/%d\n"+
+			"\n"+
+			"gc cpu (%%):      %.1f\n"+
+			"assist ratio:    %.2f\n"+
+			"pages swept:     %d\n",
+		ev.GCNum,
+		ev.TimeSinceStartS,
+		forced,
+		stwStyle(stwTotalUs).Render(fmt.Sprintf("%d", stwTotalUs)),
+		stwSweepUs,
+		stwMarkUs,
+		ev.HeapStartMB,
+		ev.HeapEndMB,
+		ev.HeapLiveMB,
+		ev.HeapGoalMB,
+		ev.GCCPUPercent,
+		ev.AssistRatio,
+		ev.PagesSwept,
+	)
+
+	return boxedSized("Cycle Details", body, w, h)
 }

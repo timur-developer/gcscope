@@ -70,7 +70,14 @@ func renderHelp(width, height int) string {
 		"q       quit",
 		"ctrl+c  quit",
 		"s       snapshot",
-		"?       toggle help",
+		"space   pause/resume",
+		"left    scrub (paused)",
+		"right   scrub (paused)",
+		"home    jump to first (paused)",
+		"end     jump to last (paused)",
+		"?       toggle help (Shift+/)",
+		"h       toggle help",
+		"f1      toggle help",
 	}, "\n")
 
 	box := boxed("Help", body)
