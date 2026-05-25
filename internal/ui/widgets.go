@@ -47,6 +47,11 @@ func frameStyle(mode frameMode) lipgloss.Style {
 	return panelStyle
 }
 
+type STWThresholds struct {
+	WarnUs int64
+	BadUs  int64
+}
+
 func boxed(title, body string) string {
 	body = strings.TrimRight(body, "\n")
 
@@ -183,7 +188,7 @@ type barData struct {
 	heapLive int
 }
 
-func renderSTWBarChart(window []domain.GCEvent, cursor int, frame frameMode, mode stwLabelMode, maxBars int, h int, w int) string {
+func renderSTWBarChart(window []domain.GCEvent, cursor int, frame frameMode, mode stwLabelMode, th STWThresholds, maxBars int, h int, w int) string {
 	inner := InnerRect(frameStyle(frame), Rect{W: w, H: h})
 	barW, barGap, capBars := stwBarsCapacity(inner.W)
 	if maxBars > 0 && capBars > maxBars {
@@ -300,7 +305,7 @@ func renderSTWBarChart(window []domain.GCEvent, cursor int, frame frameMode, mod
 	chart := renderSTWStackedBars(bars, maxTotal, chartH, cursor, barW, barGap)
 	axis := renderBarAxis(len(bars), barW, barGap)
 	cursorMarker := renderBarCursorMarker(len(bars), cursor, barW, barGap)
-	label1, label2 := renderSTWLabels(bars, mode, cursor, barW, barGap, gcStep, showSelectedOnly, valueOverlay, inner.W)
+	label1, label2 := renderSTWLabels(bars, mode, cursor, barW, barGap, gcStep, showSelectedOnly, valueOverlay, inner.W, th)
 
 	lines := make([]string, 0, bodyLines)
 	if showHeader {
@@ -356,7 +361,7 @@ func stwPerCycleUs(ev domain.GCEvent) int64 {
 	return int64(math.Round(ms * 1000))
 }
 
-func renderBars(values []int64, max int64, height int, cursor int) []string {
+func renderBars(values []int64, max int64, height int, cursor int, th STWThresholds) []string {
 	if height <= 0 {
 		height = 1
 	}
@@ -382,7 +387,7 @@ func renderBars(values []int64, max int64, height int, cursor int) []string {
 		for i, h := range heights {
 			if h >= row {
 				v := values[i]
-				style := stwStyle(v)
+				style := stwStyle(th, v)
 				ch := "█"
 				if i == cursor {
 					// Use a clearly different glyph instead of reverse-video (which may render as "invisible"
@@ -538,7 +543,7 @@ func renderSTWStackedBars(bars []barData, maxTotal int64, height int, cursor int
 	return out
 }
 
-func renderSTWLabels(bars []barData, mode stwLabelMode, cursor int, barW int, gap int, gcStep int, selectedOnly bool, valueOverlay bool, totalW int) (string, string) {
+func renderSTWLabels(bars []barData, mode stwLabelMode, cursor int, barW int, gap int, gcStep int, selectedOnly bool, valueOverlay bool, totalW int, th STWThresholds) (string, string) {
 	if selectedOnly {
 		if len(bars) == 0 {
 			return "", ""
@@ -555,7 +560,7 @@ func renderSTWLabels(bars []barData, mode stwLabelMode, cursor int, barW int, ga
 		switch mode {
 		case stwLabelGCAndSTW:
 			label = fmt.Sprintf("#%d %dus", sel.gcNum, sel.totalUs)
-			label = stwStyle(sel.totalUs).Render(label)
+			label = stwStyle(th, sel.totalUs).Render(label)
 		case stwLabelGCAndHeap:
 			label = fmt.Sprintf("#%d %dMB", sel.gcNum, sel.heapLive)
 			label = heapLabelStyle.Render(label)
@@ -623,7 +628,7 @@ func renderSTWLabels(bars []barData, mode stwLabelMode, cursor int, barW int, ga
 		case stwLabelGCAndSTW:
 			raw := formatIntIfFits(bd.totalUs, barW)
 			raw = centerTrunc(raw, barW)
-			line2Parts = append(line2Parts, stwStyle(bd.totalUs).Render(raw))
+			line2Parts = append(line2Parts, stwStyle(th, bd.totalUs).Render(raw))
 		case stwLabelGCAndHeap:
 			raw := formatIntIfFits(int64(bd.heapLive), barW)
 			raw = centerTrunc(raw, barW)
@@ -656,7 +661,7 @@ func renderSTWLabels(bars []barData, mode stwLabelMode, cursor int, barW int, ga
 		switch mode {
 		case stwLabelGCAndSTW:
 			label = fmt.Sprintf("%dus", sel.totalUs)
-			label = stwStyle(sel.totalUs).Render(label)
+			label = stwStyle(th, sel.totalUs).Render(label)
 		case stwLabelGCAndHeap:
 			label = fmt.Sprintf("%dMB", sel.heapLive)
 			label = heapLabelStyle.Render(label)
@@ -775,22 +780,22 @@ func formatUs(us int64) string {
 	return fmt.Sprintf("%dus", us)
 }
 
-func stwStyle(us int64) lipgloss.Style {
+func stwStyle(th STWThresholds, us int64) lipgloss.Style {
 	switch {
-	case us < 200:
+	case us < th.WarnUs:
 		return okStyle
-	case us < 1000:
+	case us < th.BadUs:
 		return warnStyle
 	default:
 		return badStyle
 	}
 }
 
-func stwFillStyle(us int64) lipgloss.Style {
+func stwFillStyle(th STWThresholds, us int64) lipgloss.Style {
 	switch {
-	case us < 200:
+	case us < th.WarnUs:
 		return lipgloss.NewStyle().Background(lipgloss.Color("#7cb342"))
-	case us < 1000:
+	case us < th.BadUs:
 		return lipgloss.NewStyle().Background(lipgloss.Color("#c9a227"))
 	default:
 		return lipgloss.NewStyle().Background(lipgloss.Color("#d64f4f"))
@@ -827,7 +832,7 @@ func progressBar(width int, ratio float64, fill lipgloss.Style, empty lipgloss.S
 	return b.String()
 }
 
-func renderCycleDetails(window []domain.GCEvent, cursor int, frame frameMode, w, h int) string {
+func renderCycleDetails(window []domain.GCEvent, cursor int, frame frameMode, th STWThresholds, w, h int) string {
 	if len(window) == 0 {
 		return framedSizedBy(frame, "Cycle Details", "(no data)", w, h)
 	}
@@ -867,7 +872,7 @@ func renderCycleDetails(window []domain.GCEvent, cursor int, frame frameMode, w,
 		ev.GCNum,
 		ev.TimeSinceStartS,
 		forced,
-		stwStyle(stwTotalUs).Render(fmt.Sprintf("%d", stwTotalUs)),
+		stwStyle(th, stwTotalUs).Render(fmt.Sprintf("%d", stwTotalUs)),
 		stwSweepUs,
 		stwMarkUs,
 		ev.HeapStartMB,

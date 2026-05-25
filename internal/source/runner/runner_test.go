@@ -39,7 +39,7 @@ func TestNormalizeGODEBUG(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := normalizeGODEBUG(tc.input)
+			got := NormalizeGODEBUG(tc.input)
 			gotParts := strings.Split(got, ",")
 			if !containsAll(gotParts, tc.want) {
 				t.Fatalf("expected %v, got %v", tc.want, gotParts)

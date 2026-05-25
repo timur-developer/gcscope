@@ -36,9 +36,9 @@ func renderHeapLiveHistory(points []historyPoint, frame frameMode, w, h int) str
 	return framedSizedBy(frame, "Heap live over time (MB)", c.View(), w, h)
 }
 
-func renderSTWPercentilesHistory(p50 []historyPoint, p99 []historyPoint, frame frameMode, w, h int) string {
-	if len(p50) == 0 && len(p99) == 0 {
-		return framedSizedBy(frame, "STW p50/p99 over time (us)", "(no data)", w, h)
+func renderSTWPercentilesHistory(p50 []historyPoint, p99 []historyPoint, max []historyPoint, frame frameMode, w, h int) string {
+	if len(p50) == 0 && len(p99) == 0 && len(max) == 0 {
+		return framedSizedBy(frame, "STW p50/p99/max over time (us)", "(no data)", w, h)
 	}
 
 	inner := InnerRect(frameStyle(frame), Rect{W: w, H: h})
@@ -51,6 +51,7 @@ func renderSTWPercentilesHistory(p50 []historyPoint, p99 []historyPoint, frame f
 		tslc.WithAxesStyles(lipgloss.NewStyle().Foreground(borderColor), lipgloss.NewStyle().Foreground(lipgloss.Color("#c0c0c0"))),
 		tslc.WithDataSetStyle("p50", lipgloss.NewStyle().Foreground(lipgloss.Color("#2ec4b6"))),
 		tslc.WithDataSetStyle("p99", lipgloss.NewStyle().Foreground(lipgloss.Color("#d64f4f"))),
+		tslc.WithDataSetStyle("max", lipgloss.NewStyle().Foreground(lipgloss.Color("#c9a227"))),
 	)
 
 	for _, p := range p50 {
@@ -59,14 +60,18 @@ func renderSTWPercentilesHistory(p50 []historyPoint, p99 []historyPoint, frame f
 	for _, p := range p99 {
 		c.PushDataSet("p99", tslc.TimePoint{Time: p.At, Value: p.Value})
 	}
+	for _, p := range max {
+		c.PushDataSet("max", tslc.TimePoint{Time: p.At, Value: p.Value})
+	}
 	c.DrawBrailleAll()
 
-	body := c.View() + "\n" + fmt.Sprintf("legend: %s %s",
+	body := c.View() + "\n" + fmt.Sprintf("legend: %s %s %s",
 		lipgloss.NewStyle().Foreground(lipgloss.Color("#2ec4b6")).Render("p50"),
 		lipgloss.NewStyle().Foreground(lipgloss.Color("#d64f4f")).Render("p99"),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#c9a227")).Render("max"),
 	)
 
-	return framedSizedBy(frame, "STW p50/p99 over time (us)", body, w, h)
+	return framedSizedBy(frame, "STW p50/p99/max over time (us)", body, w, h)
 }
 
 func clampChartSize(w, h int) (int, int) {

@@ -14,7 +14,7 @@ func TestModel_PauseFreezesWindowAndCursor(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := NewModel(ctx, cancel, 100, "", nil)
+	m := NewModel(ctx, cancel, 100, "", nil, STWThresholds{WarnUs: 200, BadUs: 1000}, nil)
 
 	at := time.Unix(0, 0)
 	for i := 1; i <= 5; i++ {
@@ -65,7 +65,7 @@ func TestModel_ScrubBounds(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := NewModel(ctx, cancel, 100, "", nil)
+	m := NewModel(ctx, cancel, 100, "", nil, STWThresholds{WarnUs: 200, BadUs: 1000}, nil)
 
 	at := time.Unix(0, 0)
 	for i := 1; i <= 3; i++ {
@@ -115,7 +115,7 @@ func TestModel_STWLabelsModeCycles(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	m := NewModel(ctx, cancel, 10, "", nil)
+	m := NewModel(ctx, cancel, 10, "", nil, STWThresholds{WarnUs: 200, BadUs: 1000}, nil)
 	if m.stwLabelsMode != stwLabelGCAndSTW {
 		t.Fatalf("initial stwLabelsMode=%v, want %v", m.stwLabelsMode, stwLabelGCAndSTW)
 	}

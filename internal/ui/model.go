@@ -29,10 +29,13 @@ type Model struct {
 	helpVisible bool
 	paused      bool
 	layout      layoutMode
+	stwTh       STWThresholds
+	targetEnv   *TargetEnvInfo
 
 	heapHistory []historyPoint
 	stwP50Hist  []historyPoint
 	stwP99Hist  []historyPoint
+	stwMaxHist  []historyPoint
 
 	cursor        int
 	stwLabelsMode stwLabelMode
@@ -42,6 +45,7 @@ type Model struct {
 	pausedHeapHist []historyPoint
 	pausedSTWP50   []historyPoint
 	pausedSTWP99   []historyPoint
+	pausedSTWMax   []historyPoint
 
 	snapshotWriter SnapshotWriter
 	snapshotDir    string
@@ -97,7 +101,16 @@ func (m stwLabelMode) next() stwLabelMode {
 	}
 }
 
-func NewModel(ctx context.Context, cancel context.CancelFunc, windowSize int, snapshotDir string, snapshotWriter SnapshotWriter) Model {
+type TargetEnvInfo struct {
+	GOGC      string
+	GOMEMLIMIT string
+	GODEBUG   string
+}
+
+func NewModel(ctx context.Context, cancel context.CancelFunc, windowSize int, snapshotDir string, snapshotWriter SnapshotWriter, stwTh STWThresholds, targetEnv *TargetEnvInfo) Model {
+	if stwTh.BadUs <= stwTh.WarnUs {
+		stwTh = STWThresholds{WarnUs: 200, BadUs: 1000}
+	}
 	return Model{
 		ctx:            ctx,
 		cancel:         cancel,
@@ -107,6 +120,8 @@ func NewModel(ctx context.Context, cancel context.CancelFunc, windowSize int, sn
 		snapshotWriter: snapshotWriter,
 		stwLabelsMode:  stwLabelGCAndSTW,
 		layout:         layoutSpaced,
+		stwTh:          stwTh,
+		targetEnv:      targetEnv,
 	}
 }
 
@@ -233,13 +248,13 @@ func (m Model) viewSpaced() string {
 			return lipgloss.NewStyle().Padding(paddingY, paddingX).Render("(terminal too small)")
 		}
 
-		window, agg, heapHist, p50Hist, p99Hist := m.displayData()
+		window, agg, heapHist, p50Hist, p99Hist, maxHist := m.displayData()
 
-		current := renderCurrentValues(agg, frameBoxed, rows[0].W, rows[0].H)
+		current := renderCurrentValues(agg, frameBoxed, m.stwTh, rows[0].W, rows[0].H)
 		parts := []string{current}
 
 		if len(rows) > 1 {
-			info := renderInformation(agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, frameBoxed, rows[1].W, rows[1].H)
+			info := renderInformation(window, agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, frameBoxed, m.stwTh, m.targetEnv, rows[1].W, rows[1].H)
 			parts = append(parts, info)
 		}
 
@@ -247,11 +262,11 @@ func (m Model) viewSpaced() string {
 		visCursor := 0
 		if len(rows) > 2 {
 			visWindow, visCursor = m.barViewport(window, frameBoxed, rows[2].W, rows[2].H)
-			bar := renderSTWBarChart(visWindow, visCursor, frameBoxed, m.stwLabelsMode, 0, rows[2].H, rows[2].W)
+			bar := renderSTWBarChart(visWindow, visCursor, frameBoxed, m.stwLabelsMode, m.stwTh, 0, rows[2].H, rows[2].W)
 			parts = append(parts, bar)
 		}
 		if len(rows) > 3 {
-			details := renderCycleDetails(visWindow, visCursor, frameBoxed, rows[3].W, rows[3].H)
+			details := renderCycleDetails(visWindow, visCursor, frameBoxed, m.stwTh, rows[3].W, rows[3].H)
 			parts = append(parts, details)
 		}
 		if len(rows) > 4 {
@@ -259,7 +274,7 @@ func (m Model) viewSpaced() string {
 			parts = append(parts, heap)
 		}
 		if len(rows) > 5 {
-			stw := renderSTWPercentilesHistory(p50Hist, p99Hist, frameBoxed, rows[5].W, rows[5].H)
+			stw := renderSTWPercentilesHistory(p50Hist, p99Hist, maxHist, frameBoxed, rows[5].W, rows[5].H)
 			parts = append(parts, stw)
 		}
 
@@ -283,10 +298,10 @@ func (m Model) viewSpaced() string {
 	}
 	row1Cols := Cols(Rect{W: row1AvailW, H: rows[0].H}, 0.50, 0.50)
 
-	window, agg, heapHist, p50Hist, p99Hist := m.displayData()
+	window, agg, heapHist, p50Hist, p99Hist, maxHist := m.displayData()
 
-	current := renderCurrentValues(agg, frameBoxed, row1Cols[0].W, row1Cols[0].H)
-	info := renderInformation(agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, frameBoxed, row1Cols[1].W, row1Cols[1].H)
+	current := renderCurrentValues(agg, frameBoxed, m.stwTh, row1Cols[0].W, row1Cols[0].H)
+	info := renderInformation(window, agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, frameBoxed, m.stwTh, m.targetEnv, row1Cols[1].W, row1Cols[1].H)
 
 	parts := []string{
 		lipgloss.JoinHorizontal(lipgloss.Top, current, strings.Repeat(" ", gapX), info),
@@ -301,8 +316,8 @@ func (m Model) viewSpaced() string {
 		row2Cols := Cols(Rect{W: row2AvailW, H: rows[1].H}, 0.36, 0.24, 0.40)
 
 		visWindow, visCursor := m.barViewport(window, frameBoxed, row2Cols[0].W, row2Cols[0].H)
-		bar := renderSTWBarChart(visWindow, visCursor, frameBoxed, m.stwLabelsMode, 0, row2Cols[0].H, row2Cols[0].W)
-		details := renderCycleDetails(visWindow, visCursor, frameBoxed, row2Cols[1].W, row2Cols[1].H)
+		bar := renderSTWBarChart(visWindow, visCursor, frameBoxed, m.stwLabelsMode, m.stwTh, 0, row2Cols[0].H, row2Cols[0].W)
+		details := renderCycleDetails(visWindow, visCursor, frameBoxed, m.stwTh, row2Cols[1].W, row2Cols[1].H)
 		heap := renderHeapLiveHistory(heapHist, frameBoxed, row2Cols[2].W, row2Cols[2].H)
 
 		parts = append(parts,
@@ -311,7 +326,7 @@ func (m Model) viewSpaced() string {
 	}
 
 	if len(rows) >= 3 {
-		stw := renderSTWPercentilesHistory(p50Hist, p99Hist, frameBoxed, rows[2].W, rows[2].H)
+		stw := renderSTWPercentilesHistory(p50Hist, p99Hist, maxHist, frameBoxed, rows[2].W, rows[2].H)
 		parts = append(parts, stw)
 	}
 
@@ -377,15 +392,15 @@ func (m Model) viewTight() string {
 			return lipgloss.NewStyle().Padding(paddingY, paddingX).Render("(terminal too small)")
 		}
 
-		window, agg, heapHist, p50Hist, p99Hist := m.displayData()
+		window, agg, heapHist, p50Hist, p99Hist, maxHist := m.displayData()
 
-		current := renderCurrentValues(agg, framePanel, cellW, rows[0].H)
+		current := renderCurrentValues(agg, framePanel, m.stwTh, cellW, rows[0].H)
 		gridRows := []gridRow{
 			{cellWidths: []int{cellW}, height: rows[0].H, cells: []string{current}},
 		}
 
 		if len(rows) > 1 {
-			info := renderInformation(agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, framePanel, cellW, rows[1].H)
+			info := renderInformation(window, agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, framePanel, m.stwTh, m.targetEnv, cellW, rows[1].H)
 			gridRows = append(gridRows, gridRow{cellWidths: []int{cellW}, height: rows[1].H, cells: []string{info}})
 		}
 
@@ -393,11 +408,11 @@ func (m Model) viewTight() string {
 		visCursor := 0
 		if len(rows) > 2 {
 			visWindow, visCursor = m.barViewport(window, framePanel, cellW, rows[2].H)
-			bar := renderSTWBarChart(visWindow, visCursor, framePanel, m.stwLabelsMode, 0, rows[2].H, cellW)
+			bar := renderSTWBarChart(visWindow, visCursor, framePanel, m.stwLabelsMode, m.stwTh, 0, rows[2].H, cellW)
 			gridRows = append(gridRows, gridRow{cellWidths: []int{cellW}, height: rows[2].H, cells: []string{bar}})
 		}
 		if len(rows) > 3 {
-			details := renderCycleDetails(visWindow, visCursor, framePanel, cellW, rows[3].H)
+			details := renderCycleDetails(visWindow, visCursor, framePanel, m.stwTh, cellW, rows[3].H)
 			gridRows = append(gridRows, gridRow{cellWidths: []int{cellW}, height: rows[3].H, cells: []string{details}})
 		}
 		if len(rows) > 4 {
@@ -405,7 +420,7 @@ func (m Model) viewTight() string {
 			gridRows = append(gridRows, gridRow{cellWidths: []int{cellW}, height: rows[4].H, cells: []string{heap}})
 		}
 		if len(rows) > 5 {
-			stw := renderSTWPercentilesHistory(p50Hist, p99Hist, framePanel, cellW, rows[5].H)
+			stw := renderSTWPercentilesHistory(p50Hist, p99Hist, maxHist, framePanel, cellW, rows[5].H)
 			gridRows = append(gridRows, gridRow{cellWidths: []int{cellW}, height: rows[5].H, cells: []string{stw}})
 		}
 
@@ -434,10 +449,10 @@ func (m Model) viewTight() string {
 	}
 	row1Cols := Cols(Rect{W: row1AvailW, H: rows[0].H}, 0.50, 0.50)
 
-	window, agg, heapHist, p50Hist, p99Hist := m.displayData()
+	window, agg, heapHist, p50Hist, p99Hist, maxHist := m.displayData()
 
-	current := renderCurrentValues(agg, framePanel, row1Cols[0].W, row1Cols[0].H)
-	info := renderInformation(agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, framePanel, row1Cols[1].W, row1Cols[1].H)
+	current := renderCurrentValues(agg, framePanel, m.stwTh, row1Cols[0].W, row1Cols[0].H)
+	info := renderInformation(window, agg, m.now, m.lastUpdate, m.snapshotDir, m.lastSnapshot, framePanel, m.stwTh, m.targetEnv, row1Cols[1].W, row1Cols[1].H)
 
 	gridRows := []gridRow{
 		{cellWidths: []int{row1Cols[0].W, row1Cols[1].W}, height: rows[0].H, cells: []string{current, info}},
@@ -452,8 +467,8 @@ func (m Model) viewTight() string {
 		row2Cols := Cols(Rect{W: row2AvailW, H: rows[1].H}, 0.36, 0.24, 0.40)
 
 		visWindow, visCursor := m.barViewport(window, framePanel, row2Cols[0].W, row2Cols[0].H)
-		bar := renderSTWBarChart(visWindow, visCursor, framePanel, m.stwLabelsMode, 0, row2Cols[0].H, row2Cols[0].W)
-		details := renderCycleDetails(visWindow, visCursor, framePanel, row2Cols[1].W, row2Cols[1].H)
+		bar := renderSTWBarChart(visWindow, visCursor, framePanel, m.stwLabelsMode, m.stwTh, 0, row2Cols[0].H, row2Cols[0].W)
+		details := renderCycleDetails(visWindow, visCursor, framePanel, m.stwTh, row2Cols[1].W, row2Cols[1].H)
 		heap := renderHeapLiveHistory(heapHist, framePanel, row2Cols[2].W, row2Cols[2].H)
 
 		gridRows = append(gridRows, gridRow{
@@ -468,7 +483,7 @@ func (m Model) viewTight() string {
 		if cellW < 1 {
 			cellW = 1
 		}
-		stw := renderSTWPercentilesHistory(p50Hist, p99Hist, framePanel, cellW, rows[2].H)
+		stw := renderSTWPercentilesHistory(p50Hist, p99Hist, maxHist, framePanel, cellW, rows[2].H)
 		gridRows = append(gridRows, gridRow{cellWidths: []int{cellW}, height: rows[2].H, cells: []string{stw}})
 	}
 
@@ -528,6 +543,7 @@ func (m *Model) pushHistory(at time.Time) {
 	m.heapHistory = appendLimited(m.heapHistory, historyPoint{At: at, Value: float64(m.agg.Current.HeapLiveMB)}, limit)
 	m.stwP50Hist = appendLimited(m.stwP50Hist, historyPoint{At: at, Value: float64(m.agg.Window.STWP50Us)}, limit)
 	m.stwP99Hist = appendLimited(m.stwP99Hist, historyPoint{At: at, Value: float64(m.agg.Window.STWP99Us)}, limit)
+	m.stwMaxHist = appendLimited(m.stwMaxHist, historyPoint{At: at, Value: float64(m.agg.Window.STWMaxUs)}, limit)
 }
 
 func (m *Model) togglePause() {
@@ -539,6 +555,7 @@ func (m *Model) togglePause() {
 		m.pausedHeapHist = nil
 		m.pausedSTWP50 = nil
 		m.pausedSTWP99 = nil
+		m.pausedSTWMax = nil
 		return
 	}
 
@@ -548,6 +565,7 @@ func (m *Model) togglePause() {
 	m.pausedHeapHist = append([]historyPoint(nil), m.heapHistory...)
 	m.pausedSTWP50 = append([]historyPoint(nil), m.stwP50Hist...)
 	m.pausedSTWP99 = append([]historyPoint(nil), m.stwP99Hist...)
+	m.pausedSTWMax = append([]historyPoint(nil), m.stwMaxHist...)
 	m.cursor = len(m.pausedWindow) - 1
 }
 
@@ -583,11 +601,11 @@ func (m *Model) setCursor(v int) {
 	m.cursor = v
 }
 
-func (m *Model) displayData() ([]domain.GCEvent, domain.Aggregates, []historyPoint, []historyPoint, []historyPoint) {
+func (m *Model) displayData() ([]domain.GCEvent, domain.Aggregates, []historyPoint, []historyPoint, []historyPoint, []historyPoint) {
 	if m.paused {
-		return m.pausedWindow, m.pausedAgg, m.pausedHeapHist, m.pausedSTWP50, m.pausedSTWP99
+		return m.pausedWindow, m.pausedAgg, m.pausedHeapHist, m.pausedSTWP50, m.pausedSTWP99, m.pausedSTWMax
 	}
-	return m.store.Recent(), m.agg, m.heapHistory, m.stwP50Hist, m.stwP99Hist
+	return m.store.Recent(), m.agg, m.heapHistory, m.stwP50Hist, m.stwP99Hist, m.stwMaxHist
 }
 
 func (m *Model) barViewport(window []domain.GCEvent, frame frameMode, w, h int) ([]domain.GCEvent, int) {

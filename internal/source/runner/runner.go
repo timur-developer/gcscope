@@ -243,7 +243,7 @@ func mergeEnv(base []string, extra map[string]string) []string {
 		result[key] = extra[key]
 	}
 
-	result["GODEBUG"] = normalizeGODEBUG(result["GODEBUG"])
+	result["GODEBUG"] = NormalizeGODEBUG(result["GODEBUG"])
 	if !contains(order, "GODEBUG") {
 		order = append(order, "GODEBUG")
 	}
@@ -256,7 +256,7 @@ func mergeEnv(base []string, extra map[string]string) []string {
 	return merged
 }
 
-func normalizeGODEBUG(value string) string {
+func NormalizeGODEBUG(value string) string {
 	parts := strings.Split(value, ",")
 	out := make([]string, 0, len(parts)+2)
 	foundGctrace := false

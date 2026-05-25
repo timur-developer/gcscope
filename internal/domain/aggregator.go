@@ -21,9 +21,12 @@ type CurrentValues struct {
 }
 
 type WindowStats struct {
-	STWP50Us int64
-	STWP99Us int64
-	STWMaxUs int64
+	STWP50Us       int64
+	STWP99Us       int64
+	STWMaxUs       int64
+	GCsPerMin      float64
+	AvgGCInterval  time.Duration
+	ForcedCount    int
 }
 
 // ComputeAggregates computes derived metrics over a sliding window of recent GC cycles.
@@ -51,14 +54,29 @@ func ComputeAggregates(window []GCEvent) Aggregates {
 	}
 
 	stws := make([]int64, 0, len(window))
+	forced := 0
 	for _, ev := range window {
 		stws = append(stws, stwUs(ev))
+		if ev.Forced {
+			forced++
+		}
 	}
 	sort.Slice(stws, func(i, j int) bool { return stws[i] < stws[j] })
 
 	agg.Window.STWMaxUs = stws[len(stws)-1]
 	agg.Window.STWP50Us = nearestRankPercentileUs(stws, 0.50)
 	agg.Window.STWP99Us = nearestRankPercentileUs(stws, 0.99)
+	agg.Window.ForcedCount = forced
+
+	if len(window) >= 2 {
+		first := window[0]
+		deltaS := last.TimeSinceStartS - first.TimeSinceStartS
+		if deltaS > 0 {
+			cycles := float64(len(window) - 1)
+			agg.Window.GCsPerMin = cycles / deltaS * 60.0
+			agg.Window.AvgGCInterval = durationFromSeconds(deltaS / cycles)
+		}
+	}
 
 	return agg
 }

@@ -18,11 +18,15 @@ const (
 	envRunTarget    = "GCVIZ_RUN_TARGET"
 	envDiffA        = "GCVIZ_DIFF_A"
 	envDiffB        = "GCVIZ_DIFF_B"
+	envSTWWarnUs    = "GCVIZ_STW_WARN_US"
+	envSTWBadUs     = "GCVIZ_STW_BAD_US"
 )
 
 type Config struct {
 	WindowSize   int
 	SnapshotPath string
+	STWWarnUs    int64
+	STWBadUs     int64
 	Run          RunConfig
 	Attach       AttachConfig
 	Lab          LabConfig
@@ -51,6 +55,8 @@ type DiffConfig struct {
 func Default() Config {
 	return Config{
 		WindowSize: 200,
+		STWWarnUs:  200,
+		STWBadUs:   1000,
 		Attach: AttachConfig{
 			PollInterval: time.Second,
 		},
@@ -70,7 +76,21 @@ func Load(cmd *cobra.Command, args []string) (Config, error) {
 
 	cfg.applyArgs(cmd, args)
 
+	if err := cfg.validate(); err != nil {
+		return Config{}, err
+	}
+
 	return cfg, nil
+}
+
+func (c Config) validate() error {
+	if c.STWWarnUs < 0 {
+		return fmt.Errorf("invalid %s: must be >= 0", envSTWWarnUs)
+	}
+	if c.STWBadUs <= c.STWWarnUs {
+		return fmt.Errorf("invalid %s: must be > %s", envSTWBadUs, envSTWWarnUs)
+	}
+	return nil
 }
 
 func (c *Config) applyEnv() error {
@@ -114,6 +134,21 @@ func (c *Config) applyEnv() error {
 		c.Diff.B = value
 	}
 
+	if value, ok := os.LookupEnv(envSTWWarnUs); ok {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid %s: %w", envSTWWarnUs, err)
+		}
+		c.STWWarnUs = parsed
+	}
+	if value, ok := os.LookupEnv(envSTWBadUs); ok {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid %s: %w", envSTWBadUs, err)
+		}
+		c.STWBadUs = parsed
+	}
+
 	return nil
 }
 
@@ -132,6 +167,21 @@ func (c *Config) applyFlags(cmd *cobra.Command) error {
 			return err
 		}
 		c.SnapshotPath = value
+	}
+
+	if cmd.Flags().Lookup("stw-warn-us") != nil {
+		value, err := cmd.Flags().GetInt64("stw-warn-us")
+		if err != nil {
+			return err
+		}
+		c.STWWarnUs = value
+	}
+	if cmd.Flags().Lookup("stw-bad-us") != nil {
+		value, err := cmd.Flags().GetInt64("stw-bad-us")
+		if err != nil {
+			return err
+		}
+		c.STWBadUs = value
 	}
 
 	if cmd.Flags().Lookup("target") != nil {

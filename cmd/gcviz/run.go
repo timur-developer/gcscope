@@ -42,7 +42,13 @@ func newRunCmd() *cobra.Command {
 			snapshotDir := cfg.SnapshotPath
 			writer := snapshotWriter{dir: snapshotDir}
 
-			model := ui.NewModel(ctx, cancel, cfg.WindowSize, snapshotDir, writer)
+			stwTh := ui.STWThresholds{WarnUs: cfg.STWWarnUs, BadUs: cfg.STWBadUs}
+			envInfo := &ui.TargetEnvInfo{
+				GOGC:       os.Getenv("GOGC"),
+				GOMEMLIMIT: os.Getenv("GOMEMLIMIT"),
+				GODEBUG:    runner.NormalizeGODEBUG(os.Getenv("GODEBUG")),
+			}
+			model := ui.NewModel(ctx, cancel, cfg.WindowSize, snapshotDir, writer, stwTh, envInfo)
 			prog := tea.NewProgram(model, tea.WithAltScreen())
 
 			go func() {

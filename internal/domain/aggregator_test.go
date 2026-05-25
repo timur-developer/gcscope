@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -123,5 +124,29 @@ func TestComputeAggregates_CurrentValuesFromLastEvent(t *testing.T) {
 	}
 	if agg.TargetUptime != 12*time.Second {
 		t.Fatalf("TargetUptime: got %v, want %v", agg.TargetUptime, 12*time.Second)
+	}
+}
+
+func TestComputeAggregates_GCRateAndForcedCount(t *testing.T) {
+	window := []GCEvent{
+		{GCNum: 1, TimeSinceStartS: 0, STWSweepTermMs: 0.10, HeapGoalMB: 10, Forced: true},
+		{GCNum: 2, TimeSinceStartS: 10, STWSweepTermMs: 0.10, HeapGoalMB: 10, Forced: false},
+		{GCNum: 3, TimeSinceStartS: 20, STWSweepTermMs: 0.10, HeapGoalMB: 10, Forced: true},
+		{GCNum: 4, TimeSinceStartS: 30, STWSweepTermMs: 0.10, HeapGoalMB: 10, Forced: false},
+	}
+
+	agg := ComputeAggregates(window)
+
+	if agg.Window.ForcedCount != 2 {
+		t.Fatalf("ForcedCount: got %d, want %d", agg.Window.ForcedCount, 2)
+	}
+
+	// cycles = 3 over 30s => 6 cycles/min
+	if math.Abs(agg.Window.GCsPerMin-6.0) > 1e-9 {
+		t.Fatalf("GCsPerMin: got %f, want %f", agg.Window.GCsPerMin, 6.0)
+	}
+
+	if agg.Window.AvgGCInterval != 10*time.Second {
+		t.Fatalf("AvgGCInterval: got %v, want %v", agg.Window.AvgGCInterval, 10*time.Second)
 	}
 }

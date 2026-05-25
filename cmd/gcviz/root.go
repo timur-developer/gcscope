@@ -21,6 +21,8 @@ func newRootCmd() *cobra.Command {
 
 	cmd.PersistentFlags().Int("window-size", 200, "Number of recent samples to keep in memory")
 	cmd.PersistentFlags().String("snapshot-path", filepath.Join("tmp", "snapshots"), "Path to write snapshot files")
+	cmd.PersistentFlags().Int64("stw-warn-us", 200, "STW warning threshold (microseconds)")
+	cmd.PersistentFlags().Int64("stw-bad-us", 1000, "STW bad threshold (microseconds)")
 
 	cmd.AddCommand(newRunCmd(), newAttachCmd(), newLabCmd(), newDiffCmd())
 

@@ -47,7 +47,8 @@ func newAttachCmd() *cobra.Command {
 			snapshotDir := cfg.SnapshotPath
 			writer := attachSnapshotWriter{dir: snapshotDir}
 
-			model := ui.NewModel(ctx, cancel, cfg.WindowSize, snapshotDir, writer)
+			stwTh := ui.STWThresholds{WarnUs: cfg.STWWarnUs, BadUs: cfg.STWBadUs}
+			model := ui.NewModel(ctx, cancel, cfg.WindowSize, snapshotDir, writer, stwTh, nil)
 			prog := tea.NewProgram(model, tea.WithAltScreen())
 
 			go func() {
