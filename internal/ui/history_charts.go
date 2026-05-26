@@ -279,7 +279,7 @@ func isFinite(v float64) bool {
 }
 
 func heapTitle(view chartView) string {
-	title := "Heap live over time (MB)"
+	title := "Heap live over time (MB) x:" + xSpanLabel(view.XSpan)
 	if view.Focused {
 		title += " (focused)"
 	}
@@ -287,9 +287,33 @@ func heapTitle(view chartView) string {
 }
 
 func stwTitle(view chartView) string {
-	title := "STW p50/p99/max over time (us)"
+	title := "STW p50/p99/max over time (us) x:" + xSpanLabel(view.XSpan)
 	if view.Focused {
 		title += " (focused)"
 	}
 	return title
+}
+
+func xSpanLabel(d time.Duration) string {
+	switch d {
+	case 0:
+		return "all"
+	case time.Minute:
+		return "1m"
+	case 5 * time.Minute:
+		return "5m"
+	case 15 * time.Minute:
+		return "15m"
+	case time.Hour:
+		return "1h"
+	default:
+		// Fallback: keep it short and stable.
+		if d < time.Minute {
+			return fmt.Sprintf("%ds", int(d.Seconds()))
+		}
+		if d < time.Hour {
+			return fmt.Sprintf("%dm", int(d.Minutes()))
+		}
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
 }

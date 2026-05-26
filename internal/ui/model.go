@@ -200,6 +200,80 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if msg.Type == tea.KeyRunes && !msg.Paste && !msg.Alt {
+			var cmds []tea.Cmd
+			for _, r := range msg.Runes {
+				switch r {
+				case 'q':
+					m.cancel()
+					return m, tea.Quit
+				case ' ':
+					m.togglePause()
+					m.clampZoomState()
+				case '?', 'h':
+					m.helpVisible = !m.helpVisible
+				case 's':
+					m.manualSnapshotInFlight = true
+					cmds = append(cmds, takeSnapshotCmd(m.store.Recent(), m.agg, m.snapshotWriter))
+				case 'l':
+					m.stwLabelsMode = m.stwLabelsMode.next()
+				case 'g':
+					m.layout = m.layout.next()
+				case 'z':
+					m.chartFocus = m.chartFocus.next()
+				case '+', '=':
+					const maxZoomSteps = 8
+					switch m.chartFocus {
+					case chartHeap:
+						if m.heapYZoom < maxZoomSteps {
+							m.heapYZoom++
+						}
+					case chartSTW:
+						if m.stwYZoom < maxZoomSteps {
+							m.stwYZoom++
+						}
+					}
+					m.clampZoomState()
+				case '-':
+					switch m.chartFocus {
+					case chartHeap:
+						if m.heapYZoom > 0 {
+							m.heapYZoom--
+						}
+					case chartSTW:
+						if m.stwYZoom > 0 {
+							m.stwYZoom--
+						}
+					}
+					m.clampZoomState()
+				case '0':
+					switch m.chartFocus {
+					case chartHeap:
+						m.heapYZoom = 0
+						m.heapYPan = 0
+					case chartSTW:
+						m.stwYZoom = 0
+						m.stwYPan = 0
+					}
+					m.clampZoomState()
+				case '[':
+					m.xSpan = m.xSpan.zoomIn()
+					m.clampZoomState()
+				case ']':
+					m.xSpan = m.xSpan.zoomOut()
+					m.clampZoomState()
+				case 'r':
+					m.chartFocus = chartHeap
+					m.xSpan = xSpanAll
+					m.heapYZoom = 0
+					m.stwYZoom = 0
+					m.heapYPan = 0
+					m.stwYPan = 0
+				}
+			}
+			return m, tea.Batch(cmds...)
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q":
 			m.cancel()
