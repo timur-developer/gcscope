@@ -73,7 +73,12 @@ func TestMergeEnv(t *testing.T) {
 }
 
 func TestRunnerEmitsParsedEvents(t *testing.T) {
-	runner := NewRunner(os.Args[0], []string{"-test.run=TestRunnerHelperProcess"}, map[string]string{
+	self := os.Args[0]
+	if abs, err := os.Executable(); err == nil && abs != "" {
+		self = abs
+	}
+
+	runner := NewRunner(self, []string{"-test.run=TestRunnerHelperProcess"}, map[string]string{
 		"GCVIZ_RUNNER_HELPER": "1",
 	})
 
