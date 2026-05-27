@@ -16,8 +16,8 @@ Read this in other languages: [English](../README.md)
 ## Содержание
 
 - [Как устроено](#как-устроено)
+- [Установка](#установка)
 - [Быстрый старт (1 минута)](#быстрый-старт-1-минута)
-- [Установка и использование как CLI](#установка-и-использование-как-cli)
 - [Режимы и команды](#режимы-и-команды)
   - [run](#run-запуск-вашего-бинарника-под-наблюдением)
   - [lab](#lab-встроенные-демо-нагрузки)
@@ -41,6 +41,61 @@ Read this in other languages: [English](../README.md)
 - `attach` — дополнительный режим: опрашивает HTTP-эндпоинт, который отдаёт `runtime/metrics` в JSON-формате, понятном `gcviz` через `pkg/reporter`.
 
 Для режима `run` менять код приложения не нужно. Для режима `attach` нужно добавить в сервис небольшой HTTP-эндпоинт.
+
+## Установка
+
+Выберите один из вариантов ниже.
+
+### Установка через Go
+
+Установить `gcviz` в `GOBIN`:
+
+```bash
+go install github.com/timur-developer/gcviz/cmd/gcviz@latest
+```
+
+После этого можно запускать как обычную команду (из любой папки):
+
+```bash
+gcviz lab churn
+gcviz run ./path/to/your-binary -- --your-flag value
+gcviz attach http://127.0.0.1:8080/gcviz/metrics
+gcviz diff ./a.json ./b.json
+```
+
+Встроенная справка:
+
+```bash
+gcviz --help
+gcviz run --help
+```
+
+### Готовые бинарники (Releases)
+
+Скачайте готовый бинарник со страницы GitHub Releases (Assets), выберите архив под вашу OS/arch и распакуйте.
+
+Запуск из распакованной папки:
+
+Windows (PowerShell):
+
+```powershell
+.\gcviz.exe lab churn
+```
+
+macOS / Linux:
+
+```bash
+chmod +x ./gcviz
+./gcviz lab churn
+```
+
+Чтобы запускать `gcviz` из любой папки, переместите бинарник в директорию из `PATH` (или добавьте папку с бинарником в `PATH`).
+
+### Запуск из исходников (без установки)
+
+```bash
+go run ./cmd/gcviz lab churn
+```
 
 ## Быстрый старт (1 минута)
 
@@ -87,31 +142,7 @@ go run ./cmd/gcviz run ./myapp -- --your-flag value
 - в паузе `left/right` (и `home/end`) листают историю
 - `s` сохраняет snapshot-файл в `tmp/snapshots` (по умолчанию)
 
-Если хотите использовать `gcviz` как обычный CLI (однажды установить и дальше запускать `gcviz ...`), см. следующий раздел.
-
-## Установка и использование как CLI
-
-Установить `gcviz` в `GOBIN`:
-
-```bash
-go install github.com/timur-developer/gcviz/cmd/gcviz@latest
-```
-
-Дальше можно запускать как обычную команду:
-
-```bash
-gcviz lab churn
-gcviz run ./path/to/your-binary -- --your-flag value
-gcviz attach http://127.0.0.1:8080/gcviz/metrics
-gcviz diff ./a.json ./b.json
-```
-
-Встроенная справка:
-
-```bash
-gcviz --help
-gcviz run --help
-```
+Если хотите использовать `gcviz` как обычный CLI (однажды установить и дальше запускать `gcviz ...`), см. раздел **Установка**.
 
 ## Режимы и команды
 

@@ -20,8 +20,8 @@ It is designed for fast feedback during performance work:
 ## Contents
 
 - [How It Works](#how-it-works)
+- [Install](#install)
 - [Quickstart (1 minute)](#quickstart-1-minute)
-- [Install & CLI Usage](#install--cli-usage)
 - [Usage](#usage)
   - [run](#run-run-your-binary-under-observation)
   - [lab](#lab-built-in-demo-workloads)
@@ -45,6 +45,63 @@ It is designed for fast feedback during performance work:
 - `attach` (secondary): polls an HTTP endpoint that exports `runtime/metrics` in a `gcviz`-friendly JSON format (via `pkg/reporter`).
 
 No code changes are required for `run`. For `attach`, you add a small HTTP endpoint to the target service.
+
+## Install
+
+Pick one of the options below.
+
+### Install (Go)
+
+Install the `gcviz` CLI into your `GOBIN`:
+
+```bash
+go install github.com/timur-developer/gcviz/cmd/gcviz@latest
+```
+
+After that you can use `gcviz` as a normal CLI (from any directory):
+
+```bash
+gcviz lab churn
+gcviz run ./path/to/your-binary -- --your-flag value
+gcviz attach http://127.0.0.1:8080/gcviz/metrics
+gcviz diff ./a.json ./b.json
+```
+
+Built-in help:
+
+```bash
+gcviz --help
+gcviz run --help
+```
+
+### Install (Prebuilt binaries)
+
+Download a prebuilt binary from GitHub Releases (Assets), pick the archive for your OS/arch, then extract it.
+
+Run from the extracted folder:
+
+Windows (PowerShell):
+
+```powershell
+.\gcviz.exe lab churn
+```
+
+macOS / Linux:
+
+```bash
+chmod +x ./gcviz
+./gcviz lab churn
+```
+
+To run `gcviz` from any directory, move it to a folder in your `PATH` (or add the extracted folder to `PATH`).
+
+### Run From Source (No Install)
+
+From source:
+
+```bash
+go run ./cmd/gcviz lab churn
+```
 
 ## Quickstart (1 minute)
 
@@ -89,40 +146,7 @@ go run ./cmd/gcviz run ./myapp -- --your-flag value
 - when paused, use `left/right` (and `home/end`) to scrub history
 - press `s` to write a snapshot to `tmp/snapshots` (by default)
 
-If you want to use `gcviz` as a CLI, install it once and run `gcviz ...` directly (see below).
-
-## Install & CLI Usage
-
-Install the `gcviz` CLI into your `GOBIN`:
-
-```bash
-go install github.com/timur-developer/gcviz/cmd/gcviz@latest
-```
-
-After that you can use `gcviz` as a normal CLI:
-
-```bash
-gcviz lab churn
-```
-
-```bash
-gcviz run ./path/to/your-binary -- --your-flag value
-```
-
-```bash
-gcviz attach http://127.0.0.1:8080/gcviz/metrics
-```
-
-```bash
-gcviz diff ./a.json ./b.json
-```
-
-Built-in help:
-
-```bash
-gcviz --help
-gcviz run --help
-```
+If you want to use `gcviz` as a CLI, install it once and run `gcviz ...` directly (see **Install**).
 
 ## Usage
 
