@@ -8,14 +8,14 @@
 
 Read this in other languages: [Russian](docs/README.ru.md)
 
-`gcviz` is a terminal UI (TUI) visualizer for Go GC behavior: GC cycles, STW pauses, heap live/goal dynamics, and GC pacer signals, live.
+`gcviz` is a terminal UI (TUI) visualizer for Go garbage collector behavior in real time: GC cycles, STW pauses, heap live/goal dynamics, and GC pacer signals.
 
-It is meant for "fast feedback" during performance work:
+It is designed for fast feedback during performance work:
 
-- spot bad STW spikes (p99/max) under load
-- see GC rate changes across runs
-- see heap live approaching heap goal and getting more aggressive pacing
-- compare two runs via snapshots (`diff`)
+- spot problematic STW spikes (p99/max) under load
+- see how GC frequency changes across runs
+- see heap live approach heap goal as pacing becomes more aggressive
+- compare two runs using snapshots (`diff`)
 
 ## Contents
 
@@ -50,7 +50,7 @@ No code changes are required for `run`. For `attach`, you add a small HTTP endpo
 
 ![gcviz launch](docs/assets/demo_launch.readme.gif)
 
-Prereqs: Go 1.22+, a reasonably sized terminal.
+Prerequisites: Go 1.22+ and a reasonably large terminal window.
 
 ### 1) Try the built-in demo workload
 
@@ -165,10 +165,10 @@ gcviz lab spike
 
 What the presets mean (synthetic workloads):
 
-- `alloc`: steady small/medium allocations with some retention (heap live gradually grows; stable GC cadence)
-- `churn`: repeated large bursts with short retention (frequent GC cycles; good for stressing STW/pacer)
-- `idle`: mostly idle with occasional bursts (sporadic GC activity; useful to see low-frequency behavior)
-- `spike`: light background traffic + periodic heavy waves (visible spikes in heap/STW patterns)
+- `alloc`: steady small/medium allocations with some retention; heap live gradually grows and GC cadence stays relatively stable
+- `churn`: repeated large bursts with short retention; useful for stressing STW and the pacer
+- `idle`: mostly idle with occasional bursts; useful for observing low-frequency GC behavior
+- `spike`: light background traffic with periodic heavy bursts; makes heap and STW spikes easy to see
 
 ### attach (connect to a runtime/metrics HTTP endpoint)
 
