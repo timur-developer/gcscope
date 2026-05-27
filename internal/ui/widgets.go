@@ -296,10 +296,13 @@ func renderSTWBarChart(window []domain.GCEvent, cursor int, frame frameMode, mod
 		}
 	}
 
-	showHeader := bodyLines >= axisLines+labels+2
+	// Keep at least one empty line between the header and the bar area so tall bars
+	// never visually "touch" or overlap the header text.
+	headerGapLines := 1
+	showHeader := bodyLines >= axisLines+labels+headerGapLines+2
 	reserved := axisLines + labels
 	if showHeader {
-		reserved++
+		reserved += 1 + headerGapLines
 	}
 
 	chartH := bodyLines - reserved
@@ -338,6 +341,9 @@ func renderSTWBarChart(window []domain.GCEvent, cursor int, frame frameMode, mod
 			}
 		}
 		lines = append(lines, header)
+		for i := 0; i < headerGapLines; i++ {
+			lines = append(lines, "")
+		}
 	}
 	lines = append(lines, chart...)
 	lines = append(lines, axis, cursorMarker)
@@ -799,11 +805,11 @@ func stwStyle(th STWThresholds, us int64) lipgloss.Style {
 func stwFillStyle(th STWThresholds, us int64) lipgloss.Style {
 	switch {
 	case us < th.WarnUs:
-		return lipgloss.NewStyle().Background(lipgloss.Color("#7cb342"))
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#7cb342"))
 	case us < th.BadUs:
-		return lipgloss.NewStyle().Background(lipgloss.Color("#c9a227"))
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#c9a227"))
 	default:
-		return lipgloss.NewStyle().Background(lipgloss.Color("#d64f4f"))
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#d64f4f"))
 	}
 }
 
@@ -827,11 +833,15 @@ func progressBar(width int, ratio float64, fill lipgloss.Style, empty lipgloss.S
 	}
 
 	var b strings.Builder
+	// Use midline glyphs instead of full-height blocks so inline bars keep
+	// visual breathing room from text above/below without consuming extra lines.
+	const filledGlyph = "\u2501"
+	const emptyGlyph = "\u2500"
 	for i := 0; i < width; i++ {
 		if i < full {
-			b.WriteString(fill.Render(" "))
+			b.WriteString(fill.Render(filledGlyph))
 		} else {
-			b.WriteString(empty.Render(" "))
+			b.WriteString(empty.Render(emptyGlyph))
 		}
 	}
 	return b.String()

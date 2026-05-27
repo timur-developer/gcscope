@@ -30,8 +30,8 @@ func renderCurrentValues(agg domain.Aggregates, frame frameMode, th STWThreshold
 	if agg.Current.HeapGoalMB > 0 {
 		ratio = float64(agg.Current.HeapLiveMB) / float64(agg.Current.HeapGoalMB)
 	}
-	fill := lipgloss.NewStyle().Background(lipgloss.Color("#2ec4b6"))
-	empty := lipgloss.NewStyle().Background(lipgloss.Color("#2b2b2b"))
+	fill := lipgloss.NewStyle().Foreground(lipgloss.Color("#2ec4b6"))
+	empty := lipgloss.NewStyle().Foreground(lipgloss.Color("#3a3a44"))
 	fmt.Fprintf(&b, "heap:           %s %d/%d\n", progressBar(20, ratio, fill, empty), agg.Current.HeapLiveMB, agg.Current.HeapGoalMB)
 
 	return framedSizedBy(frame, "Current Values", b.String(), w, h)
@@ -98,7 +98,7 @@ func renderInformation(window []domain.GCEvent, agg domain.Aggregates, now time.
 		}
 		ratio := float64(agg.Current.LastSTWUs) / den
 		fill := stwFillStyle(th, agg.Current.LastSTWUs)
-		empty := lipgloss.NewStyle().Background(lipgloss.Color("#2b2b2b"))
+		empty := lipgloss.NewStyle().Foreground(lipgloss.Color("#3a3a44"))
 		lines = append(lines, fmt.Sprintf("last STW:        %s %d", progressBar(20, ratio, fill, empty), agg.Current.LastSTWUs))
 	}
 

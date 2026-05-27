@@ -7,8 +7,8 @@ Set Width 1920
 Set Height 1080
 Set Framerate 30
 Set Theme "Catppuccin Mocha"
-Set Padding 16
-Set Margin 18
+Set Padding 8
+Set Margin 10
 Set MarginFill "#0b0b12"
 Set BorderRadius 8
 Set CursorBlink false

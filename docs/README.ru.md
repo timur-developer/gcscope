@@ -1,6 +1,6 @@
 # gcviz
 
-![gcviz demo](assets/demo_hero.readme.gif)
+![gcviz demo](assets/demo_hero.gif)
 
 Read this in other languages: [English](../README.md)
 
@@ -10,7 +10,7 @@ Read this in other languages: [English](../README.md)
 
 ## Быстрый старт
 
-![gcviz launch](assets/demo_launch.readme.gif)
+![gcviz launch](assets/demo_launch.gif)
 
 Требования: Go 1.25+, достаточно большой терминал.
 
@@ -91,7 +91,7 @@ gcviz diff ./a.json ./b.json
 
 ## Управление
 
-![gcviz features](assets/demo_features.readme.gif)
+![gcviz features](assets/demo_features.gif)
 
 База:
 

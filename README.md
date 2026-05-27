@@ -1,6 +1,6 @@
-# gcviz
+# gcviz — Go Garbage Collector Visualizer
 
-![gcviz demo](docs/assets/demo_hero.readme.gif)
+![gcviz demo](docs/assets/demo_hero.gif)
 
 [![CI](https://github.com/timur-developer/gcviz/actions/workflows/ci.yml/badge.svg)](https://github.com/timur-developer/gcviz/actions/workflows/ci.yml)
 ![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go&logoColor=white)
@@ -14,7 +14,7 @@ The main mode is `run`: it launches your Go binary with `GODEBUG=gctrace=1,gcpac
 
 ## Quickstart
 
-![gcviz launch](docs/assets/demo_launch.readme.gif)
+![gcviz launch](docs/assets/demo_launch.gif)
 
 Prereqs: Go 1.25+, a reasonably sized terminal.
 
@@ -103,7 +103,7 @@ gcviz diff ./a.json ./b.json
 
 ## Controls
 
-![gcviz features](docs/assets/demo_features.readme.gif)
+![gcviz features](docs/assets/demo_features.gif)
 
 Core:
 
