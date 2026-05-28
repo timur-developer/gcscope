@@ -5,6 +5,7 @@
 Read this in other languages: [English](../README.md)
 
 `gcscope` - терминальный TUI-инструмент для наблюдения за работой сборщика мусора Go в реальном времени. Он показывает GC-циклы, STW-паузы, динамику динамику кучи (live/goal) и сигналы GC pacer прямо в терминале.
+Источники данных: `gctrace`, `gcpacertrace` и `runtime/metrics` (режимы `run` и `attach`).
 
 Типичные сценарии, где он помогает:
 

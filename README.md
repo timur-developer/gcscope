@@ -1,4 +1,4 @@
-# gcscope - Go Garbage Collector Visualizer
+# gcscope — Go Garbage Collector Visualizer
 
 ![gcscope demo](docs/assets/demo_hero.readme.gif)
 
@@ -8,7 +8,7 @@
 
 Read this in other languages: [Russian](docs/README.ru.md)
 
-`gcscope` is a terminal UI (TUI) visualizer for Go garbage collector behavior in real time: GC cycles, STW pauses, heap live/goal dynamics, and GC pacer signals.
+`gcscope` is a terminal UI (TUI) and CLI for visualizing Go GC behavior in real time from `gctrace`, `gcpacertrace`, and `runtime/metrics`: GC cycles, stop-the-world (STW) pauses, heap live/goal dynamics, and GC pacer signals.
 
 It is designed for fast feedback during performance work:
 
