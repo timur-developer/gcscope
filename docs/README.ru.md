@@ -243,6 +243,8 @@ gcscope diff ./a.json ./b.json
 
 ## Что показывает UI (метрики и панели)
 
+![gcscope UI overview](assets/ui_overview.png)
+
 `gcscope` хранит скользящее окно последних GC событий (`--window-size`, по умолчанию: 200) и показывает как значения по циклам, так и агрегаты по окну.
 
 ### Current Values

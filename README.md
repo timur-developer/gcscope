@@ -246,6 +246,8 @@ What `diff` prints:
 
 ## What You See (Metrics & Panels)
 
+![gcscope UI overview](docs/assets/ui_overview.png)
+
 `gcscope` keeps a sliding window of recent GC events (`--window-size`, default: 200) and shows both raw per-cycle values and derived stats over that window.
 
 ### Current Values
